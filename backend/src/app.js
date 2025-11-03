@@ -74,6 +74,20 @@ mongoose.connection.on('disconnected', () => {
 // 기본 라우트
 app.get('/', (req, res) => res.send('VibeLink 백엔드 서버가 동작 중입니다! 🚀'));
 
+// 디버깅용 라우트 - 모든 방 목록 조회
+app.get('/debug/rooms', async (req, res) => {
+  try {
+    const Room = require('./models/Room');
+    const rooms = await Room.find({}, 'code host participants createdAt').limit(10);
+    res.json({
+      totalRooms: await Room.countDocuments(),
+      recentRooms: rooms
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // API 라우터 등록
 app.use('/api/rooms', roomRoutes);
 app.use('/api/search', searchRoutes);

@@ -134,11 +134,9 @@ function App() {
     setIsHost(true);
     setCurrentView('room');
     
-    // 잠시 후 방에 참가 (서버 처리 시간 확보)
-    setTimeout(() => {
-      console.log('🚪 방 참가 시도:', { roomCode: code, nickname: hostNickname });
-      socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
-    }, 500);
+    // 즉시 방에 참가 (간단한 형식으로)
+    console.log('🚪 방 참가 시도:', { roomCode: code, nickname: hostNickname });
+    socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
   };
 
   // 방 참가

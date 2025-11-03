@@ -8,28 +8,35 @@ class RoomSocketHandler {
   handleConnection(socket) {
     console.log(`✅ 새로운 유저 접속: ${socket.id}`);
 
-    // 방 참가 이벤트 (닉네임 포함)
+    // 방 참가 이벤트 (이전 호환성 유지)
     socket.on('joinRoom', async (data) => {
       try {
-        // 데이터 형식 검증
+        let roomCode, nickname;
+        
+        // 데이터 형식 처리 (이전 호환성)
         if (typeof data === 'string') {
-          // 기존 호환성을 위해 문자열로 받은 경우 (roomCode만)
-          console.log('⚠️ 구식 joinRoom 이벤트 형식:', data);
-          socket.emit('roomError', { message: '닉네임이 필요합니다. 다시 시도해주세요.' });
+          roomCode = data;
+          nickname = socket.id; // 임시 닉네임
+          console.log('📡 구버전 joinRoom 형식 처리:', { roomCode, nickname });
+        } else if (data && typeof data === 'object') {
+          roomCode = data.roomCode;
+          nickname = data.nickname || socket.id;
+          console.log('📡 신버전 joinRoom 형식 처리:', { roomCode, nickname });
+        } else {
+          console.log('❌ joinRoom 잘못된 데이터 형식:', data);
+          socket.emit('roomError', { message: '잘못된 요청 형식입니다.' });
           return;
         }
         
-        const { roomCode, nickname } = data || {};
-        
-        if (!roomCode || !nickname) {
-          console.log('❌ joinRoom 필수 데이터 누락:', { roomCode, nickname });
-          socket.emit('roomError', { message: '방 코드와 닉네임이 필요합니다.' });
+        if (!roomCode) {
+          console.log('❌ 방 코드가 없음');
+          socket.emit('roomError', { message: '방 코드가 필요합니다.' });
           return;
         }
         
         await this.handleJoinRoom(socket, roomCode, nickname);
       } catch (error) {
-        console.error('❌ joinRoom 이벤트 처리 오류:', error);
+        console.error('❌ joinRoom 이벤트 처리 오류:', error.message);
         socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다.' });
       }
     });
@@ -60,6 +67,8 @@ class RoomSocketHandler {
       console.log(`🔍 방 참가 시도: 방코드=${roomCode}, 닉네임=${nickname}, 소켓ID=${socket.id}`);
       
       const room = await Room.findOne({ code: roomCode });
+      console.log(`🔍 방 조회 결과:`, room ? `방 발견 (호스트: ${room.host})` : '방 없음');
+      
       if (!room) {
         console.log(`❌ 방을 찾을 수 없음: ${roomCode}`);
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
@@ -71,18 +80,38 @@ class RoomSocketHandler {
       socket.userId = socket.id;
       socket.nickname = nickname;
       
-      // 참가자 추가 (중복 방지)
-      const existingParticipant = room.participants.find(p => p.socketId === socket.id);
-      if (!existingParticipant) {
-        room.participants.push({
-          socketId: socket.id,
-          nickname: nickname
-        });
-        await room.save();
-        console.log(`✅ ${nickname}(${socket.id})가 ${roomCode} 방에 참가했습니다. (총 ${room.participants.length}명)`);
-      } else {
-        console.log(`⚠️ ${nickname}(${socket.id})가 이미 ${roomCode} 방에 참가되어 있습니다.`);
+      // 참가자 관리 (점진적 마이그레이션)
+      if (!Array.isArray(room.participants)) {
+        room.participants = [];
       }
+      
+      // 혼재된 형식 처리 (이전 호환성)
+      let participants = room.participants;
+      
+      // 이미 객체 형식으로 된 참가자가 있는지 확인
+      const hasObjectFormat = participants.some(p => typeof p === 'object' && p.socketId);
+      
+      if (hasObjectFormat) {
+        // 새 형식 사용
+        const existingParticipant = participants.find(p => 
+          typeof p === 'object' && p.socketId === socket.id
+        );
+        if (!existingParticipant) {
+          participants.push({
+            socketId: socket.id,
+            nickname: nickname
+          });
+        }
+      } else {
+        // 기존 형식 유지 (간단한 문자열 배열)
+        if (!participants.includes(socket.id)) {
+          participants.push(socket.id);
+        }
+      }
+      
+      room.participants = participants;
+      await room.save();
+      console.log(`✅ ${nickname}(${socket.id})가 ${roomCode} 방에 참가했습니다. (총 ${room.participants.length}명)`);
       
       // 방 정보 전송
       socket.emit('roomJoined', room);
@@ -180,7 +209,15 @@ class RoomSocketHandler {
         const room = await Room.findOne({ code: socket.roomCode });
         if (room) {
           const beforeCount = room.participants.length;
-          room.participants = room.participants.filter(p => p.socketId !== socket.userId);
+          
+          // 혼재된 형식 처리
+          room.participants = room.participants.filter(p => {
+            if (typeof p === 'object' && p.socketId) {
+              return p.socketId !== socket.userId;
+            } else {
+              return p !== socket.userId;
+            }
+          });
           
           if (beforeCount !== room.participants.length) {
             await room.save();
