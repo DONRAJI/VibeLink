@@ -31,8 +31,8 @@ router.post('/', async (req, res) => {
     
     const room = new Room({
       code,
-      host: host.trim(),
-      participants: [] // 빈 배열로 시작, 소켓 연결 시 추가됨
+      host,
+      participants: [host]
     });
     
     await room.save();
