@@ -3,6 +3,18 @@ import './PlaylistQueue.css';
 
 const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }) => {
   const handleVote = (videoId, voteType) => {
+    // 사용자 피드백 개선
+    const button = event.target;
+    const originalText = button.textContent;
+    
+    if (voteType === 'up') {
+      button.textContent = '✨';
+      setTimeout(() => button.textContent = originalText, 500);
+    } else {
+      button.textContent = '💔';
+      setTimeout(() => button.textContent = originalText, 500);
+    }
+    
     onVoteTrack(videoId, voteType);
   };
 
@@ -21,16 +33,22 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
   return (
     <div className="playlist-queue">
       <div className="queue-header">
-        <h3>플레이리스트 큐 ({queue.length})</h3>
-        {!currentTrack && queue.length > 0 && (
-          <button 
-            className="play-first-btn"
-            onClick={() => onPlayTrack(queue[0])}
-            disabled={!isHost}
-          >
-            ▶️ 첫 곡 재생
-          </button>
-        )}
+        <h3>플레이리스트 큐 ({queue.length}곡)</h3>
+        <div className="queue-actions">
+          {!currentTrack && queue.length > 0 && (
+            <button 
+              className="play-first-btn"
+              onClick={() => onPlayTrack(queue[0])}
+              disabled={!isHost}
+              title={!isHost ? "방장만 재생할 수 있습니다" : "첫 번째 곡을 재생합니다"}
+            >
+              ▶️ 첫 곡 재생
+            </button>
+          )}
+          {queue.length > 1 && (
+            <span className="queue-info">투표로 순서가 결정됩니다</span>
+          )}
+        </div>
       </div>
       
       <div className="queue-list">

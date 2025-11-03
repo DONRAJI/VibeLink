@@ -2,6 +2,13 @@
 
 여러 사람이 함께 음악을 실시간으로 추가하고 제어하며 즐길 수 있는 웹 기반 공유 플레이리스트 서비스입니다.
 
+![VibeLink Logo](https://via.placeholder.com/800x200/4A90E2/FFFFFF?text=VibeLink+-+Music+Together)
+
+[![Node.js](https://img.shields.io/badge/Node.js-v18+-green.svg)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-v18+-blue.svg)](https://reactjs.org/)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-v4.8+-red.svg)](https://socket.io/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-v6+-brightgreen.svg)](https://mongodb.com/)
+
 ## ✨ 주요 기능
 
 ### P0 (필수 기능)

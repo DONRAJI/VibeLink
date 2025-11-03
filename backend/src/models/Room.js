@@ -3,7 +3,10 @@ const mongoose = require('mongoose');
 const roomSchema = new mongoose.Schema({
   code: { type: String, required: true, unique: true },
   host: { type: String, required: true },
-  participants: [String],
+  participants: [{
+    socketId: String,
+    nickname: String
+  }],
   queue: [{
     videoId: String,
     title: String,

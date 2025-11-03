@@ -74,9 +74,9 @@ const RoomHeader = ({ roomCode, nickname, participants, isHost, onLeaveRoom }) =
             <div key={index} className="participant-item">
               <span className="participant-icon">👤</span>
               <span className="participant-name">
-                {participant === nickname ? '나' : participant}
+                {participant.nickname === nickname ? '나' : participant.nickname}
               </span>
-              {participant === nickname && isHost && (
+              {participant.nickname === nickname && isHost && (
                 <span className="host-indicator">방장</span>
               )}
             </div>

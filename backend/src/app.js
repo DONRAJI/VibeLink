@@ -13,8 +13,23 @@ const searchRoutes = require('./api/searchRoutes');
 const RoomSocketHandler = require('./sockets/roomSocketHandler');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// CORS 설정 개선
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'https://your-frontend-domain.com'
+    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  credentials: true
+}));
+
+// JSON 파싱 제한
+app.use(express.json({ limit: '10mb' }));
+
+// 요청 로깅
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // 👇 [수정 1] Render.com 같은 배포 환경을 위한 포트 설정
 // process.env.PORT는 Render가 자동으로 주입해주는 포트 번호입니다.
@@ -29,10 +44,32 @@ const io = new Server(server, {
   }
 });
 
-// MongoDB 연결
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vibelink')
-  .then(() => console.log('✅ MongoDB에 성공적으로 연결되었습니다.'))
-  .catch(err => console.error('❌ MongoDB 연결 오류:', err));
+// MongoDB 연결 옵션 개선
+const mongoOptions = {
+  maxPoolSize: 10, // 연결 풀 크기
+  serverSelectionTimeoutMS: 5000, // 서버 선택 타임아웃
+  socketTimeoutMS: 45000, // 소켓 타임아웃
+  bufferMaxEntries: 0 // 버퍼 비활성화
+};
+
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vibelink', mongoOptions)
+  .then(() => {
+    console.log('✅ MongoDB에 성공적으로 연결되었습니다.');
+    console.log(`📊 연결된 데이터베이스: ${mongoose.connection.db.databaseName}`);
+  })
+  .catch(err => {
+    console.error('❌ MongoDB 연결 오류:', err);
+    process.exit(1);
+  });
+
+// MongoDB 연결 이벤트 처리
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB 연결 오류:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB 연결이 끊어졌습니다.');
+});
 
 // 기본 라우트
 app.get('/', (req, res) => res.send('VibeLink 백엔드 서버가 동작 중입니다! 🚀'));

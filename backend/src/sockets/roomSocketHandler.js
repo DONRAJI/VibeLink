@@ -8,9 +8,9 @@ class RoomSocketHandler {
   handleConnection(socket) {
     console.log(`✅ 새로운 유저 접속: ${socket.id}`);
 
-    // 방 참가 이벤트
-    socket.on('joinRoom', async (roomCode) => {
-      await this.handleJoinRoom(socket, roomCode);
+    // 방 참가 이벤트 (닉네임 포함)
+    socket.on('joinRoom', async ({ roomCode, nickname }) => {
+      await this.handleJoinRoom(socket, roomCode, nickname);
     });
 
     // 트랙 추가 이벤트
@@ -34,7 +34,7 @@ class RoomSocketHandler {
     });
   }
 
-  async handleJoinRoom(socket, roomCode) {
+  async handleJoinRoom(socket, roomCode, nickname) {
     try {
       const room = await Room.findOne({ code: roomCode });
       if (!room) {
@@ -45,18 +45,25 @@ class RoomSocketHandler {
       socket.join(roomCode);
       socket.roomCode = roomCode;
       socket.userId = socket.id;
+      socket.nickname = nickname;
       
-      // 참가자 추가
-      if (!room.participants.includes(socket.id)) {
-        room.participants.push(socket.id);
+      // 참가자 추가 (중복 방지)
+      const existingParticipant = room.participants.find(p => p.socketId === socket.id);
+      if (!existingParticipant) {
+        room.participants.push({
+          socketId: socket.id,
+          nickname: nickname
+        });
         await room.save();
+        console.log(`✅ ${nickname}(${socket.id})가 ${roomCode} 방에 참가했습니다. (총 ${room.participants.length}명)`);
+      } else {
+        console.log(`⚠️ ${nickname}(${socket.id})가 이미 ${roomCode} 방에 참가되어 있습니다.`);
       }
       
       // 방 정보 전송
       socket.emit('roomJoined', room);
       this.io.to(roomCode).emit('participantsUpdated', room.participants);
       
-      console.log(`유저 ${socket.id}가 ${roomCode} 방에 참가했습니다.`);
     } catch (error) {
       console.error('방 참가 오류:', error);
       socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다.' });
@@ -139,15 +146,21 @@ class RoomSocketHandler {
 
   async handleDisconnect(socket) {
     try {
-      if (socket.roomCode) {
+      if (socket.roomCode && socket.userId) {
         const room = await Room.findOne({ code: socket.roomCode });
         if (room) {
-          room.participants = room.participants.filter(p => p !== socket.userId);
-          await room.save();
-          this.io.to(socket.roomCode).emit('participantsUpdated', room.participants);
+          const beforeCount = room.participants.length;
+          room.participants = room.participants.filter(p => p.socketId !== socket.userId);
+          
+          if (beforeCount !== room.participants.length) {
+            await room.save();
+            this.io.to(socket.roomCode).emit('participantsUpdated', room.participants);
+            console.log(`❌ ${socket.nickname || socket.id}가 ${socket.roomCode} 방에서 나갔습니다. (남은 인원: ${room.participants.length}명)`);
+          }
         }
+      } else {
+        console.log(`❌ 유저 접속 해제: ${socket.id} (방 참가 이력 없음)`);
       }
-      console.log(`❌ 유저 접속 해제: ${socket.id}`);
     } catch (error) {
       console.error('연결 해제 오류:', error);
     }

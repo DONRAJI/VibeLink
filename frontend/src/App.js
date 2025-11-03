@@ -10,8 +10,14 @@ import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
 import MusicSearch from './components/MusicSearch/MusicSearch';
 import './App.css';
 
-// Socket.IO 연결 - 환경변수 사용
-const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000');
+// Socket.IO 연결 - 환경변수 사용 및 연결 안정성 개선
+const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', {
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  timeout: 20000,
+  forceNew: true
+});
 
 function App() {
   // 앱 상태
@@ -31,8 +37,22 @@ function App() {
 
   // Socket.IO 이벤트 리스너 설정
   useEffect(() => {
+    // 연결 상태 로깅
+    socket.on('connect', () => {
+      console.log('✅ 서버에 연결되었습니다:', socket.id);
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('❌ 서버 연결이 끊어졌습니다:', reason);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('🔌 연결 오류:', error);
+    });
+
     // 방 참가 성공
     socket.on('roomJoined', (room) => {
+      console.log('✅ 방에 성공적으로 참가했습니다:', room.code);
       setCurrentTrack(room.currentTrack);
       setIsPlaying(room.isPlaying);
       setQueue(room.queue || []);
@@ -42,6 +62,7 @@ function App() {
 
     // 방 참가 실패
     socket.on('roomError', (error) => {
+      console.error('❌ 방 관련 오류:', error);
       alert(error.message);
     });
 
@@ -80,6 +101,9 @@ function App() {
     });
 
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('connect_error');
       socket.off('roomJoined');
       socket.off('roomError');
       socket.off('trackAdded');
@@ -101,8 +125,8 @@ function App() {
     setIsHost(true);
     setCurrentView('room');
     
-    // 방에 참가
-    socket.emit('joinRoom', code);
+    // 방에 참가 (닉네임 포함)
+    socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
   };
 
   // 방 참가
@@ -112,8 +136,8 @@ function App() {
     setIsHost(false);
     setCurrentView('room');
     
-    // 방에 참가
-    socket.emit('joinRoom', code);
+    // 방에 참가 (닉네임 포함)
+    socket.emit('joinRoom', { roomCode: code, nickname: userNickname });
   };
 
   // 방 나가기

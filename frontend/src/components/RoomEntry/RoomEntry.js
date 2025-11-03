@@ -13,8 +13,21 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
   const [error, setError] = useState('');
 
   const handleCreateRoom = async () => {
-    if (!nickname.trim()) {
+    const trimmedNickname = nickname.trim();
+    
+    // 입력 검증 강화
+    if (!trimmedNickname) {
       setError('닉네임을 입력해주세요.');
+      return;
+    }
+    
+    if (trimmedNickname.length < 2) {
+      setError('닉네임은 2글자 이상이어야 합니다.');
+      return;
+    }
+    
+    if (trimmedNickname.length > 20) {
+      setError('닉네임은 20글자 이하여야 합니다.');
       return;
     }
 
@@ -23,12 +36,20 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
 
     try {
       const response = await axios.post(`${API_BASE_URL}/api/rooms`, {
-        host: nickname
+        host: trimmedNickname
+      }, {
+        timeout: 10000 // 10초 타임아웃
       });
       
-      onRoomCreated(response.data.roomCode, nickname);
+      onRoomCreated(response.data.roomCode, trimmedNickname);
     } catch (error) {
-      setError('방 생성 중 오류가 발생했습니다.');
+      if (error.code === 'ECONNABORTED') {
+        setError('서버 응답 시간이 초과되었습니다. 다시 시도해주세요.');
+      } else if (error.response?.status === 500) {
+        setError('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        setError('방 생성 중 오류가 발생했습니다. 네트워크를 확인해주세요.');
+      }
       console.error('방 생성 오류:', error);
     } finally {
       setIsCreating(false);
@@ -36,8 +57,22 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
   };
 
   const handleJoinRoom = async () => {
-    if (!roomCode.trim() || !nickname.trim()) {
+    const trimmedRoomCode = roomCode.trim().toUpperCase();
+    const trimmedNickname = nickname.trim();
+    
+    // 입력 검증 강화
+    if (!trimmedRoomCode || !trimmedNickname) {
       setError('방 코드와 닉네임을 모두 입력해주세요.');
+      return;
+    }
+    
+    if (trimmedRoomCode.length !== 6) {
+      setError('방 코드는 6자리여야 합니다.');
+      return;
+    }
+    
+    if (trimmedNickname.length < 2 || trimmedNickname.length > 20) {
+      setError('닉네임은 2-20글자 사이여야 합니다.');
       return;
     }
 
@@ -45,13 +80,19 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
     setError('');
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/rooms/${roomCode}`);
-      onRoomJoined(roomCode, nickname);
+      const response = await axios.get(`${API_BASE_URL}/api/rooms/${trimmedRoomCode}`, {
+        timeout: 10000 // 10초 타임아웃
+      });
+      onRoomJoined(trimmedRoomCode, trimmedNickname);
     } catch (error) {
-      if (error.response?.status === 404) {
-        setError('존재하지 않는 방 코드입니다.');
+      if (error.code === 'ECONNABORTED') {
+        setError('서버 응답 시간이 초과되었습니다. 다시 시도해주세요.');
+      } else if (error.response?.status === 404) {
+        setError('존재하지 않는 방 코드입니다. 코드를 다시 확인해주세요.');
+      } else if (error.response?.status === 500) {
+        setError('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
       } else {
-        setError('방 참가 중 오류가 발생했습니다.');
+        setError('방 참가 중 오류가 발생했습니다. 네트워크를 확인해주세요.');
       }
       console.error('방 참가 오류:', error);
     } finally {

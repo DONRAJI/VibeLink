@@ -7,8 +7,6 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [internalPlaying, setInternalPlaying] = useState(false);
   const [playerError, setPlayerError] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingTimeout, setLoadingTimeout] = useState(null);
 
   // 외부에서 전달받은 isPlaying과 내부 상태를 동기화
   useEffect(() => {
@@ -18,90 +16,26 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   useEffect(() => {
     if (currentTrack) {
       console.log('새 트랙 로드:', currentTrack.title, 'videoId:', currentTrack.videoId);
-      setIsLoading(true);
-      setIsPlayerReady(false);
+      
+      // 즉시 플레이어를 준비 상태로 설정
+      setIsPlayerReady(true);
       setPlayerError(null);
-      
-      // 로딩 타임아웃 설정 (10초)
-      const timeout = setTimeout(() => {
-        console.warn('플레이어 로딩 타임아웃 - 강제로 준비 상태로 변경');
-        setIsPlayerReady(true);
-        setIsLoading(false);
-      }, 10000);
-      
-      setLoadingTimeout(timeout);
-      
-      return () => {
-        if (timeout) clearTimeout(timeout);
-      };
     }
   }, [currentTrack]);
 
   useEffect(() => {
     if (currentTrack && isPlayerReady) {
-      // 플레이어가 준비되면 내부 상태를 초기화
+      // 플레이어가 준비되면 내부 상태를 즉시 동기화
       setInternalPlaying(isPlaying);
-      setIsLoading(false);
-      
-      // 타임아웃 클리어
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
-        setLoadingTimeout(null);
-      }
     }
-  }, [currentTrack, isPlayerReady, isPlaying, loadingTimeout]);
+  }, [currentTrack, isPlayerReady, isPlaying]);
 
-  // 컴포넌트 마운트 시 window 객체에 콜백 함수 할당
+  // 컴포넌트 정리 (필요한 경우에만)
   useEffect(() => {
-    // YouTube 플레이어 준비 완료 콜백
-    window.handleYouTubePlayerReady = () => {
-      console.log('YouTube 플레이어가 준비되었습니다.');
-      setIsPlayerReady(true);
-      setInternalPlaying(isPlaying);
-      setPlayerError(null);
-      setIsLoading(false);
-      
-      // 타임아웃 클리어
-      if (loadingTimeout) {
-        clearTimeout(loadingTimeout);
-        setLoadingTimeout(null);
-      }
-    };
-
-    // YouTube 플레이어 재생 시작 콜백
-    window.handleYouTubePlayerPlay = () => {
-      console.log('비디오 재생 시작');
-      setInternalPlaying(true);
-    };
-
-    // YouTube 플레이어 일시정지 콜백
-    window.handleYouTubePlayerPause = () => {
-      console.log('비디오 일시정지');
-      setInternalPlaying(false);
-    };
-
-    // YouTube 플레이어 버퍼링 콜백
-    window.handleYouTubePlayerBuffer = () => {
-      console.log('비디오 버퍼링 중...');
-    };
-
-    // YouTube 플레이어 오류 콜백
-    window.handleYouTubePlayerError = (error) => {
-      console.error('YouTube 플레이어 오류:', error);
-      setPlayerError(error);
-      setInternalPlaying(false);
-      setIsLoading(false);
-    };
-
-    // 컴포넌트 언마운트 시 window 객체에서 콜백 함수 제거
     return () => {
-      delete window.handleYouTubePlayerReady;
-      delete window.handleYouTubePlayerPlay;
-      delete window.handleYouTubePlayerPause;
-      delete window.handleYouTubePlayerBuffer;
-      delete window.handleYouTubePlayerError;
+      // 컴포넌트 언마운트 시 정리 작업
     };
-  }, [isPlaying]);
+  }, []);
 
   const handlePlay = () => {
     console.log('재생 요청:', currentTrack?.title);
@@ -127,46 +61,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
     );
   }
 
-  // 플레이어가 로딩 중일 때 로딩 화면 표시
-  if (isLoading && !isPlayerReady) {
-    return (
-      <div className="music-player loading">
-        <div className="loading-state">
-          <div className="loading-spinner">⏳</div>
-          <h3>플레이어 로딩 중...</h3>
-          <p>YouTube 플레이어를 준비하고 있습니다. 잠시만 기다려주세요.</p>
-          <div className="debug-info">
-            <p><strong>비디오 ID:</strong> {currentTrack?.videoId}</p>
-            <p><strong>제목:</strong> {currentTrack?.title}</p>
-            <p><strong>플레이어 준비:</strong> {isPlayerReady ? '완료' : '대기 중'}</p>
-            <button 
-              onClick={() => {
-                console.log('직접 iframe 플레이어 사용');
-                setIsPlayerReady(true);
-                setIsLoading(false);
-              }}
-              style={{ 
-                margin: '10px', 
-                padding: '5px 10px', 
-                backgroundColor: '#007bff', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              직접 재생
-            </button>
-          </div>
-          <div className="loading-progress">
-            <div className="progress-bar">
-              <div className="progress-fill"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // 로딩 화면 제거 - 바로 플레이어 표시
 
   return (
     <div className="music-player">
@@ -214,12 +109,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
               }}
               onLoad={() => {
                 console.log('YouTube iframe 로드 완료');
-                setIsPlayerReady(true);
-                setIsLoading(false);
-                if (loadingTimeout) {
-                  clearTimeout(loadingTimeout);
-                  setLoadingTimeout(null);
-                }
+                // 이미 준비 상태이므로 추가 작업 불필요
               }}
             />
           </div>

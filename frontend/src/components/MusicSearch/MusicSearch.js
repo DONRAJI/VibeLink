@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import './MusicSearch.css';
 
@@ -10,10 +10,19 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lastSearchTime, setLastSearchTime] = useState(0);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) {
+  const handleSearch = useCallback(async () => {
+    const trimmedQuery = searchQuery.trim();
+    
+    // 입력 검증
+    if (!trimmedQuery) {
       setError('검색어를 입력해주세요.');
+      return;
+    }
+
+    if (trimmedQuery.length < 2) {
+      setError('검색어는 2글자 이상이어야 합니다.');
       return;
     }
 
@@ -22,11 +31,22 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
       return;
     }
 
+    // 연속 검색 방지 (1초 간격)
+    const now = Date.now();
+    if (now - lastSearchTime < 1000) {
+      setError('너무 빠른 검색입니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
+    setLastSearchTime(now);
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(searchQuery)}`);
+      const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(trimmedQuery)}`, {
+        timeout: 15000 // 15초 타임아웃
+      });
+      
       setSearchResults(response.data);
       
       if (response.data.length === 0) {
@@ -34,21 +54,31 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
       }
     } catch (error) {
       console.error('검색 중 오류 발생:', error);
-      setError('검색 중 오류가 발생했습니다. 다시 시도해주세요.');
+      
+      if (error.code === 'ECONNABORTED') {
+        setError('검색 시간이 초과되었습니다. 다시 시도해주세요.');
+      } else if (error.response?.status === 500) {
+        setError('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+      } else {
+        setError('검색 중 오류가 발생했습니다. 네트워크를 확인해주세요.');
+      }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [searchQuery, currentRoom, lastSearchTime]);
 
-  const handleAddTrack = (track) => {
+  const handleAddTrack = useCallback((track) => {
     const trackWithUser = {
       ...track,
       addedBy: nickname
     };
     onAddTrack(trackWithUser);
+    
+    // 성공적인 추가 후 검색 결과 정리
     setSearchResults([]);
     setSearchQuery('');
-  };
+    setError(''); // 에러 상태도 초기화
+  }, [nickname, onAddTrack]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
