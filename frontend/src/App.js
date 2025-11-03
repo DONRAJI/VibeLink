@@ -63,7 +63,15 @@ function App() {
     // 방 참가 실패
     socket.on('roomError', (error) => {
       console.error('❌ 방 관련 오류:', error);
-      alert(error.message);
+      alert(`오류: ${error.message}\n\n다시 시도해 주세요.`);
+      
+      // 오류 발생 시 입장 화면으로 돌아가기
+      if (currentView === 'room') {
+        setCurrentView('entry');
+        setRoomCode('');
+        setNickname('');
+        setIsHost(false);
+      }
     });
 
     // 트랙 추가됨
@@ -120,17 +128,22 @@ function App() {
 
   // 방 생성
   const handleRoomCreated = (code, hostNickname) => {
+    console.log('🏠 방 생성 완료:', { code, hostNickname });
     setRoomCode(code);
     setNickname(hostNickname);
     setIsHost(true);
     setCurrentView('room');
     
-    // 방에 참가 (닉네임 포함)
-    socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
+    // 잠시 후 방에 참가 (서버 처리 시간 확보)
+    setTimeout(() => {
+      console.log('🚪 방 참가 시도:', { roomCode: code, nickname: hostNickname });
+      socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
+    }, 500);
   };
 
   // 방 참가
   const handleRoomJoined = (code, userNickname) => {
+    console.log('🚪 방 참가 시도:', { code, userNickname });
     setRoomCode(code);
     setNickname(userNickname);
     setIsHost(false);

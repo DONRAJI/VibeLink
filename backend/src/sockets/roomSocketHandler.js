@@ -9,8 +9,29 @@ class RoomSocketHandler {
     console.log(`✅ 새로운 유저 접속: ${socket.id}`);
 
     // 방 참가 이벤트 (닉네임 포함)
-    socket.on('joinRoom', async ({ roomCode, nickname }) => {
-      await this.handleJoinRoom(socket, roomCode, nickname);
+    socket.on('joinRoom', async (data) => {
+      try {
+        // 데이터 형식 검증
+        if (typeof data === 'string') {
+          // 기존 호환성을 위해 문자열로 받은 경우 (roomCode만)
+          console.log('⚠️ 구식 joinRoom 이벤트 형식:', data);
+          socket.emit('roomError', { message: '닉네임이 필요합니다. 다시 시도해주세요.' });
+          return;
+        }
+        
+        const { roomCode, nickname } = data || {};
+        
+        if (!roomCode || !nickname) {
+          console.log('❌ joinRoom 필수 데이터 누락:', { roomCode, nickname });
+          socket.emit('roomError', { message: '방 코드와 닉네임이 필요합니다.' });
+          return;
+        }
+        
+        await this.handleJoinRoom(socket, roomCode, nickname);
+      } catch (error) {
+        console.error('❌ joinRoom 이벤트 처리 오류:', error);
+        socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다.' });
+      }
     });
 
     // 트랙 추가 이벤트
@@ -36,8 +57,11 @@ class RoomSocketHandler {
 
   async handleJoinRoom(socket, roomCode, nickname) {
     try {
+      console.log(`🔍 방 참가 시도: 방코드=${roomCode}, 닉네임=${nickname}, 소켓ID=${socket.id}`);
+      
       const room = await Room.findOne({ code: roomCode });
       if (!room) {
+        console.log(`❌ 방을 찾을 수 없음: ${roomCode}`);
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
         return;
       }
@@ -65,8 +89,14 @@ class RoomSocketHandler {
       this.io.to(roomCode).emit('participantsUpdated', room.participants);
       
     } catch (error) {
-      console.error('방 참가 오류:', error);
-      socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다.' });
+      console.error('❌ handleJoinRoom 오류:', {
+        error: error.message,
+        stack: error.stack,
+        roomCode,
+        nickname,
+        socketId: socket.id
+      });
+      socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다. 다시 시도해주세요.' });
     }
   }
 
