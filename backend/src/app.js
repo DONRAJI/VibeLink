@@ -15,12 +15,16 @@ const RoomSocketHandler = require('./sockets/roomSocketHandler');
 const app = express();
 app.use(cors());
 app.use(express.json());
-const port = 4000;
+
+// 👇 [수정 1] Render.com 같은 배포 환경을 위한 포트 설정
+// process.env.PORT는 Render가 자동으로 주입해주는 포트 번호입니다.
+// 이 값이 없으면(즉, 로컬 개발 환경이면) 4000번을 사용합니다.
+const port = process.env.PORT || 4000;
 
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: "*", 
     methods: ["GET", "POST"]
   }
 });

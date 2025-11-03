@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import './MusicSearch.css';
 
+// 백엔드 URL 환경변수
+const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+
 const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -23,7 +26,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     setError('');
 
     try {
-      const response = await axios.get(`http://localhost:4000/api/search?query=${encodeURIComponent(searchQuery)}`);
+      const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(searchQuery)}`);
       setSearchResults(response.data);
       
       if (response.data.length === 0) {

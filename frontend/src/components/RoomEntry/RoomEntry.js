@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import './RoomEntry.css';
 
+// 백엔드 URL 환경변수
+const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
+
 const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
   const [roomCode, setRoomCode] = useState('');
   const [nickname, setNickname] = useState('');
@@ -19,7 +22,7 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:4000/api/rooms', {
+      const response = await axios.post(`${API_BASE_URL}/api/rooms`, {
         host: nickname
       });
       
@@ -42,7 +45,7 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
     setError('');
 
     try {
-      const response = await axios.get(`http://localhost:4000/api/rooms/${roomCode}`);
+      const response = await axios.get(`${API_BASE_URL}/api/rooms/${roomCode}`);
       onRoomJoined(roomCode, nickname);
     } catch (error) {
       if (error.response?.status === 404) {

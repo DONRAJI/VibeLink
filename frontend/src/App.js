@@ -10,8 +10,8 @@ import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
 import MusicSearch from './components/MusicSearch/MusicSearch';
 import './App.css';
 
-// Socket.IO 연결
-const socket = io('http://localhost:4000');
+// Socket.IO 연결 - 환경변수 사용
+const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000');
 
 function App() {
   // 앱 상태
