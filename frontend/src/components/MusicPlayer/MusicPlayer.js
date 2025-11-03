@@ -128,7 +128,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   }
 
   // 플레이어가 로딩 중일 때 로딩 화면 표시
-  if (isLoading || !isPlayerReady) {
+  if (isLoading && !isPlayerReady) {
     return (
       <div className="music-player loading">
         <div className="loading-state">
@@ -141,7 +141,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
             <p><strong>플레이어 준비:</strong> {isPlayerReady ? '완료' : '대기 중'}</p>
             <button 
               onClick={() => {
-                console.log('강제 준비 완료 버튼 클릭');
+                console.log('직접 iframe 플레이어 사용');
                 setIsPlayerReady(true);
                 setIsLoading(false);
               }}
@@ -155,7 +155,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
                 cursor: 'pointer'
               }}
             >
-              강제 준비 완료
+              직접 재생
             </button>
           </div>
           <div className="loading-progress">
@@ -176,63 +176,53 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
             <div className="player-error">
               <p>플레이어 오류: {playerError?.message || '알 수 없는 오류'}</p>
               <p>비디오 ID: {currentTrack.videoId}</p>
+              <button 
+                onClick={() => {
+                  console.log('직접 YouTube 링크로 이동');
+                  window.open(`https://www.youtube.com/watch?v=${currentTrack.videoId}`, '_blank');
+                }}
+                style={{ 
+                  margin: '10px', 
+                  padding: '5px 10px', 
+                  backgroundColor: '#ff0000', 
+                  color: 'white', 
+                  border: 'none', 
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                YouTube에서 직접 보기
+              </button>
             </div>
           )}
           
-          <ReactPlayer
-            ref={playerRef}
-            url={`https://www.youtube.com/watch?v=${currentTrack.videoId}`}
-            playing={internalPlaying}
-            controls={true}
-            width="100%"
-            height="100%"
-            onEnded={onEnded}
-            onReady={() => {
-              console.log('ReactPlayer onReady 호출됨');
-              window.handleYouTubePlayerReady();
-            }}
-            onError={(error) => {
-              console.error('ReactPlayer onError 호출됨:', error);
-              window.handleYouTubePlayerError(error);
-            }}
-            onPlay={() => {
-              console.log('ReactPlayer onPlay 호출됨');
-              window.handleYouTubePlayerPlay();
-            }}
-            onBuffer={() => {
-              console.log('ReactPlayer onBuffer 호출됨');
-              window.handleYouTubePlayerBuffer();
-            }}
-            onPause={() => {
-              console.log('ReactPlayer onPause 호출됨');
-              window.handleYouTubePlayerPause();
-            }}
-            onStart={() => {
-              console.log('ReactPlayer onStart 호출됨 - 비디오 시작됨');
-              setIsPlayerReady(true);
-              setIsLoading(false);
-            }}
-            config={{
-              youtube: {
-                playerVars: {
-                  modestbranding: 1,
-                  rel: 0,
-                  showinfo: 1,
-                  controls: 1,
-                  disablekb: 0,
-                  fs: 1,
-                  iv_load_policy: 3,
-                  cc_load_policy: 0,
-                  autoplay: 0,
-                  start: 0,
-                  origin: window.location.origin,
-                  // 추가 안정성을 위한 옵션들
-                  enablejsapi: 1,
-                  playsinline: 1
+          {/* YouTube iframe 직접 사용 */}
+          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden' }}>
+            <iframe
+              key={currentTrack.videoId} // 비디오 변경 시 iframe 재생성
+              src={`https://www.youtube-nocookie.com/embed/${currentTrack.videoId}?autoplay=${internalPlaying ? 1 : 0}&controls=1&rel=0&showinfo=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
+              title={currentTrack.title}
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
+              onLoad={() => {
+                console.log('YouTube iframe 로드 완료');
+                setIsPlayerReady(true);
+                setIsLoading(false);
+                if (loadingTimeout) {
+                  clearTimeout(loadingTimeout);
+                  setLoadingTimeout(null);
                 }
-              }
-            }}
-          />
+              }}
+            />
+          </div>
         </div>
         
         <div className="player-info">
