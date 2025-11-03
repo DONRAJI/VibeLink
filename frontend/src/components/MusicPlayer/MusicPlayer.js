@@ -8,6 +8,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   const [internalPlaying, setInternalPlaying] = useState(false);
   const [playerError, setPlayerError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingTimeout, setLoadingTimeout] = useState(null);
 
   // 외부에서 전달받은 isPlaying과 내부 상태를 동기화
   useEffect(() => {
@@ -15,13 +16,40 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   }, [isPlaying]);
 
   useEffect(() => {
-    if (currentTrack && isPlayerReady) {
-      // 새로운 트랙이 로드되면 내부 상태를 초기화
-      setInternalPlaying(isPlaying);
+    if (currentTrack) {
+      console.log('새 트랙 로드:', currentTrack.title, 'videoId:', currentTrack.videoId);
+      setIsLoading(true);
+      setIsPlayerReady(false);
       setPlayerError(null);
-      setIsLoading(false);
+      
+      // 로딩 타임아웃 설정 (10초)
+      const timeout = setTimeout(() => {
+        console.warn('플레이어 로딩 타임아웃 - 강제로 준비 상태로 변경');
+        setIsPlayerReady(true);
+        setIsLoading(false);
+      }, 10000);
+      
+      setLoadingTimeout(timeout);
+      
+      return () => {
+        if (timeout) clearTimeout(timeout);
+      };
     }
-  }, [currentTrack, isPlayerReady, isPlaying]);
+  }, [currentTrack]);
+
+  useEffect(() => {
+    if (currentTrack && isPlayerReady) {
+      // 플레이어가 준비되면 내부 상태를 초기화
+      setInternalPlaying(isPlaying);
+      setIsLoading(false);
+      
+      // 타임아웃 클리어
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        setLoadingTimeout(null);
+      }
+    }
+  }, [currentTrack, isPlayerReady, isPlaying, loadingTimeout]);
 
   // 컴포넌트 마운트 시 window 객체에 콜백 함수 할당
   useEffect(() => {
@@ -32,6 +60,12 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
       setInternalPlaying(isPlaying);
       setPlayerError(null);
       setIsLoading(false);
+      
+      // 타임아웃 클리어
+      if (loadingTimeout) {
+        clearTimeout(loadingTimeout);
+        setLoadingTimeout(null);
+      }
     };
 
     // YouTube 플레이어 재생 시작 콜백
@@ -101,6 +135,29 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
           <div className="loading-spinner">⏳</div>
           <h3>플레이어 로딩 중...</h3>
           <p>YouTube 플레이어를 준비하고 있습니다. 잠시만 기다려주세요.</p>
+          <div className="debug-info">
+            <p><strong>비디오 ID:</strong> {currentTrack?.videoId}</p>
+            <p><strong>제목:</strong> {currentTrack?.title}</p>
+            <p><strong>플레이어 준비:</strong> {isPlayerReady ? '완료' : '대기 중'}</p>
+            <button 
+              onClick={() => {
+                console.log('강제 준비 완료 버튼 클릭');
+                setIsPlayerReady(true);
+                setIsLoading(false);
+              }}
+              style={{ 
+                margin: '10px', 
+                padding: '5px 10px', 
+                backgroundColor: '#007bff', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              강제 준비 완료
+            </button>
+          </div>
           <div className="loading-progress">
             <div className="progress-bar">
               <div className="progress-fill"></div>
@@ -130,11 +187,31 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
             width="100%"
             height="100%"
             onEnded={onEnded}
-            onReady={() => window.handleYouTubePlayerReady()}
-            onError={(error) => window.handleYouTubePlayerError(error)}
-            onPlay={() => window.handleYouTubePlayerPlay()}
-            onBuffer={() => window.handleYouTubePlayerBuffer()}
-            onPause={() => window.handleYouTubePlayerPause()}
+            onReady={() => {
+              console.log('ReactPlayer onReady 호출됨');
+              window.handleYouTubePlayerReady();
+            }}
+            onError={(error) => {
+              console.error('ReactPlayer onError 호출됨:', error);
+              window.handleYouTubePlayerError(error);
+            }}
+            onPlay={() => {
+              console.log('ReactPlayer onPlay 호출됨');
+              window.handleYouTubePlayerPlay();
+            }}
+            onBuffer={() => {
+              console.log('ReactPlayer onBuffer 호출됨');
+              window.handleYouTubePlayerBuffer();
+            }}
+            onPause={() => {
+              console.log('ReactPlayer onPause 호출됨');
+              window.handleYouTubePlayerPause();
+            }}
+            onStart={() => {
+              console.log('ReactPlayer onStart 호출됨 - 비디오 시작됨');
+              setIsPlayerReady(true);
+              setIsLoading(false);
+            }}
             config={{
               youtube: {
                 playerVars: {
@@ -148,7 +225,10 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
                   cc_load_policy: 0,
                   autoplay: 0,
                   start: 0,
-                  origin: window.location.origin
+                  origin: window.location.origin,
+                  // 추가 안정성을 위한 옵션들
+                  enablejsapi: 1,
+                  playsinline: 1
                 }
               }
             }}
