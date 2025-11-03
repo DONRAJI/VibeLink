@@ -2,17 +2,19 @@ import React from 'react';
 import './PlaylistQueue.css';
 
 const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }) => {
-  const handleVote = (videoId, voteType) => {
+  const handleVote = (videoId, voteType, event) => {
     // 사용자 피드백 개선
-    const button = event.target;
-    const originalText = button.textContent;
-    
-    if (voteType === 'up') {
-      button.textContent = '✨';
-      setTimeout(() => button.textContent = originalText, 500);
-    } else {
-      button.textContent = '💔';
-      setTimeout(() => button.textContent = originalText, 500);
+    if (event && event.target) {
+      const button = event.target;
+      const originalText = button.textContent;
+      
+      if (voteType === 'up') {
+        button.textContent = '✨';
+        setTimeout(() => button.textContent = originalText, 500);
+      } else {
+        button.textContent = '💔';
+        setTimeout(() => button.textContent = originalText, 500);
+      }
     }
     
     onVoteTrack(videoId, voteType);
@@ -86,14 +88,14 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
               <div className="vote-buttons">
                 <button
                   className="vote-btn upvote"
-                  onClick={() => handleVote(track.videoId, 'up')}
+                  onClick={(e) => handleVote(track.videoId, 'up', e)}
                   title="좋아요"
                 >
                   👍
                 </button>
                 <button
                   className="vote-btn downvote"
-                  onClick={() => handleVote(track.videoId, 'down')}
+                  onClick={(e) => handleVote(track.videoId, 'down', e)}
                   title="싫어요"
                 >
                   👎

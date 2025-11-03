@@ -1,9 +1,7 @@
-import React, { useRef, useEffect, useState } from 'react';
-import ReactPlayer from 'react-player';
+import React, { useEffect, useState } from 'react';
 import './MusicPlayer.css';
 
 const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) => {
-  const playerRef = useRef(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [internalPlaying, setInternalPlaying] = useState(false);
   const [playerError, setPlayerError] = useState(null);

@@ -80,7 +80,7 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
     setError('');
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/rooms/${trimmedRoomCode}`, {
+      await axios.get(`${API_BASE_URL}/api/rooms/${trimmedRoomCode}`, {
         timeout: 10000 // 10초 타임아웃
       });
       onRoomJoined(trimmedRoomCode, trimmedNickname);
