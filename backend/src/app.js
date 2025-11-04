@@ -14,7 +14,7 @@ const RoomSocketHandler = require('./sockets/roomSocketHandler');
 
 const app = express();
 
-// CORS 설정 개선
+// CORS 설정 (원래 단순 설정으로 복귀)
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL || 'https://your-frontend-domain.com'
@@ -48,12 +48,11 @@ const io = new Server(server, {
 const mongoOptions = {
   maxPoolSize: 10, // 연결 풀 크기
   serverSelectionTimeoutMS: 5000, // 서버 선택 타임아웃
-  socketTimeoutMS: 45000, // 소켓 타임아웃
-  dbName: process.env.MONGODB_DB || 'vibelink' // 명시적 DB 선택 (기본값: vibelink)
+  socketTimeoutMS: 45000 // 소켓 타임아웃
   // bufferMaxEntries 옵션은 MongoDB Node 드라이버 최신 버전에서 제거되었습니다.
 };
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017', mongoOptions)
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vibelink', mongoOptions)
   .then(() => {
     console.log('✅ MongoDB에 성공적으로 연결되었습니다.');
     console.log(`📊 연결된 데이터베이스: ${mongoose.connection.db.databaseName}`);

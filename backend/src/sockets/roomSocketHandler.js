@@ -68,7 +68,7 @@ class RoomSocketHandler {
       const room = await Room.findOne({ code: roomCode });
       if (!room) return;
       
-      const newTrack = { ...track, addedBy, votes: 0, voters: [] };
+  const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
       await room.save();
       
@@ -120,25 +120,16 @@ class RoomSocketHandler {
       
       const track = room.queue.find(t => t.videoId === videoId);
       if (track) {
-        // 중복 투표 방지: socket.id 기준으로 1인 1표 토글
-        const userId = socket.userId || socket.id;
-        if (!Array.isArray(track.voters)) track.voters = [];
-
         if (voteType === 'up') {
-          if (!track.voters.includes(userId)) {
-            track.voters.push(userId);
-          }
+          track.votes += 1;
         } else if (voteType === 'down') {
-          // down은 자신의 투표 취소로 처리
-          track.voters = track.voters.filter(v => v !== userId);
+          track.votes = Math.max(0, track.votes - 1);
         }
 
-        track.votes = track.voters.length;
-        
         // 투표 수에 따라 큐 정렬
         room.queue.sort((a, b) => b.votes - a.votes);
         await room.save();
-        
+
         this.io.to(roomCode).emit('queueUpdated', room.queue);
       }
     } catch (error) {
