@@ -44,12 +44,12 @@ const io = new Server(server, {
   }
 });
 
-// MongoDB 연결 옵션 개선
+// MongoDB 연결 옵션 (현대 드라이버에서 지원되는 옵션만 사용)
 const mongoOptions = {
   maxPoolSize: 10, // 연결 풀 크기
   serverSelectionTimeoutMS: 5000, // 서버 선택 타임아웃
-  socketTimeoutMS: 45000, // 소켓 타임아웃
-  bufferMaxEntries: 0 // 버퍼 비활성화
+  socketTimeoutMS: 45000 // 소켓 타임아웃
+  // bufferMaxEntries 옵션은 MongoDB Node 드라이버 최신 버전에서 제거되었습니다.
 };
 
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vibelink', mongoOptions)
