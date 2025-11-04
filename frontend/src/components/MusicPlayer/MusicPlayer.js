@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import ReactPlayer from 'react-player';
 import './MusicPlayer.css';
 
 const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) => {
@@ -59,8 +60,6 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
     );
   }
 
-  // 로딩 화면 제거 - 바로 플레이어 표시
-
   return (
     <div className="music-player">
       <div className="player-container">
@@ -69,17 +68,16 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
             <div className="player-error">
               <p>플레이어 오류: {playerError?.message || '알 수 없는 오류'}</p>
               <p>비디오 ID: {currentTrack.videoId}</p>
-              <button 
+              <button
                 onClick={() => {
-                  console.log('직접 YouTube 링크로 이동');
                   window.open(`https://www.youtube.com/watch?v=${currentTrack.videoId}`, '_blank');
                 }}
-                style={{ 
-                  margin: '10px', 
-                  padding: '5px 10px', 
-                  backgroundColor: '#ff0000', 
-                  color: 'white', 
-                  border: 'none', 
+                style={{
+                  margin: '10px',
+                  padding: '5px 10px',
+                  backgroundColor: '#ff0000',
+                  color: 'white',
+                  border: 'none',
                   borderRadius: '4px',
                   cursor: 'pointer'
                 }}
@@ -88,28 +86,27 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
               </button>
             </div>
           )}
-          
-          {/* YouTube iframe 직접 사용 */}
+
+          {/* ReactPlayer 사용: onEnded로 자동 다음 곡 트리거 (호스트만) */}
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden' }}>
-            <iframe
-              key={currentTrack.videoId} // 비디오 변경 시 iframe 재생성
-              src={`https://www.youtube-nocookie.com/embed/${currentTrack.videoId}?autoplay=${internalPlaying ? 1 : 0}&controls=1&rel=0&showinfo=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&widget_referrer=${encodeURIComponent(window.location.origin)}`}
-              title={currentTrack.title}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%'
-              }}
-              onLoad={() => {
-                console.log('YouTube iframe 로드 완료');
-                // 이미 준비 상태이므로 추가 작업 불필요
-              }}
-            />
+            <div style={{ position: 'absolute', inset: 0 }}>
+              <ReactPlayer
+                key={currentTrack.videoId}
+                url={`https://www.youtube.com/watch?v=${currentTrack.videoId}`}
+                playing={internalPlaying}
+                controls
+                width="100%"
+                height="100%"
+                onError={(e) => setPlayerError(e)}
+                onReady={() => setIsPlayerReady(true)}
+                onEnded={() => {
+                  if (isHost) {
+                    // 호스트에서만 다음 곡 자동 재생
+                    if (typeof onEnded === 'function') onEnded();
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
         

@@ -48,11 +48,12 @@ const io = new Server(server, {
 const mongoOptions = {
   maxPoolSize: 10, // 연결 풀 크기
   serverSelectionTimeoutMS: 5000, // 서버 선택 타임아웃
-  socketTimeoutMS: 45000 // 소켓 타임아웃
+  socketTimeoutMS: 45000, // 소켓 타임아웃
+  dbName: process.env.MONGODB_DB || 'vibelink' // 명시적 DB 선택 (기본값: vibelink)
   // bufferMaxEntries 옵션은 MongoDB Node 드라이버 최신 버전에서 제거되었습니다.
 };
 
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/vibelink', mongoOptions)
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017', mongoOptions)
   .then(() => {
     console.log('✅ MongoDB에 성공적으로 연결되었습니다.');
     console.log(`📊 연결된 데이터베이스: ${mongoose.connection.db.databaseName}`);

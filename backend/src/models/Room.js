@@ -9,7 +9,8 @@ const roomSchema = new mongoose.Schema({
     title: String,
     thumbnailUrl: String,
     addedBy: String,
-    votes: { type: Number, default: 0 }
+    votes: { type: Number, default: 0 },
+    voters: { type: [String], default: [] } // 각 트랙에 투표한 사용자(socket.id) 목록
   }],
   currentTrack: {
     videoId: String,
