@@ -9,8 +9,8 @@ class RoomSocketHandler {
     console.log(`✅ 새로운 유저 접속: ${socket.id}`);
 
     // 방 참가 이벤트
-    socket.on('joinRoom', async (roomCode) => {
-      await this.handleJoinRoom(socket, roomCode);
+    socket.on('joinRoom', async (data) => {
+      await this.handleJoinRoom(socket, data);
     });
 
     // 트랙 추가 이벤트
@@ -34,8 +34,12 @@ class RoomSocketHandler {
     });
   }
 
-  async handleJoinRoom(socket, roomCode) {
+  async handleJoinRoom(socket, data) {
     try {
+      // data는 문자열(과거 방식) 또는 { roomCode, nickname } 객체일 수 있음
+      const roomCode = typeof data === 'string' ? data : data?.roomCode;
+      const nickname = typeof data === 'object' ? (data?.nickname || '') : '';
+
       const room = await Room.findOne({ code: roomCode });
       if (!room) {
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
@@ -45,10 +49,12 @@ class RoomSocketHandler {
       socket.join(roomCode);
       socket.roomCode = roomCode;
       socket.userId = socket.id;
+      if (nickname) socket.userName = nickname;
       
-      // 참가자 추가
-      if (!room.participants.includes(socket.id)) {
-        room.participants.push(socket.id);
+      // 참가자 추가 (닉네임 우선 저장, 없으면 socket.id 저장 - 하위호환)
+      const participantKey = nickname || socket.id;
+      if (!room.participants.includes(participantKey)) {
+        room.participants.push(participantKey);
         await room.save();
       }
       
@@ -142,7 +148,8 @@ class RoomSocketHandler {
       if (socket.roomCode) {
         const room = await Room.findOne({ code: socket.roomCode });
         if (room) {
-          room.participants = room.participants.filter(p => p !== socket.userId);
+          const removeKey = socket.userName || socket.userId;
+          room.participants = room.participants.filter(p => p !== removeKey);
           await room.save();
           this.io.to(socket.roomCode).emit('participantsUpdated', room.participants);
         }

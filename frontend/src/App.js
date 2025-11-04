@@ -125,7 +125,7 @@ function App() {
     setCurrentView('room');
     
     // 방에 참가
-    socket.emit('joinRoom', code);
+    socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
   };
 
   // 방 참가
@@ -136,7 +136,7 @@ function App() {
     setCurrentView('room');
     
     // 방에 참가
-    socket.emit('joinRoom', code);
+    socket.emit('joinRoom', { roomCode: code, nickname: userNickname });
   };
 
   // 방 나가기
