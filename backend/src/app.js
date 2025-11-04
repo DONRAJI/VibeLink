@@ -17,7 +17,7 @@ const app = express();
 // CORS 설정 (원래 단순 설정으로 복귀)
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-frontend-domain.com'
+    ? process.env.FRONTEND_URL || 'https://vibe-link-g9nn.vercel.app'
     : ['http://localhost:3000', 'http://127.0.0.1:3000'],
   credentials: true
 }));
