@@ -17,6 +17,8 @@ const roomSchema = new mongoose.Schema({
     thumbnailUrl: String
   },
   isPlaying: { type: Boolean, default: false },
+  // Auto-DJ 기능 토글
+  autoDjEnabled: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 

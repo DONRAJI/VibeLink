@@ -225,7 +225,6 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
               {currentTrack.addedBy && (
                 <span className="track-added-by">추가: {currentTrack.addedBy}</span>
               )}
-              <span className="video-id">ID: {currentTrack.videoId}</span>
             </div>
           </div>
           

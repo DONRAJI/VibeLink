@@ -69,6 +69,9 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
                   {track.addedBy && (
                     <span className="added-by">추가: {track.addedBy}</span>
                   )}
+                  {track.addedBy === 'AutoDJ' && (
+                    <span className="recommend-badge" title="자동 추천 곡">추천</span>
+                  )}
                   <span className="votes">👍 {track.votes || 0}</span>
                 </div>
               </div>
