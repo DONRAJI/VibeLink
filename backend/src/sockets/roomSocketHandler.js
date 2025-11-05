@@ -80,8 +80,13 @@ class RoomSocketHandler {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
-      
-  const newTrack = { ...track, addedBy, votes: 0 };
+
+      // 큐가 정의되지 않았을 가능성에 대비
+      if (!Array.isArray(room.queue)) {
+        room.queue = [];
+      }
+
+      const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
       await room.save();
       
