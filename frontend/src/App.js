@@ -53,7 +53,8 @@ function App() {
     // 방 참가 성공
     socket.on('roomJoined', (room) => {
       console.log('✅ 방에 성공적으로 참가했습니다:', room.code);
-      setCurrentTrack(room.currentTrack);
+      // currentTrack 정합성 보정: videoId 없으면 null로 처리
+      setCurrentTrack(room.currentTrack && room.currentTrack.videoId ? room.currentTrack : null);
       setIsPlaying(room.isPlaying);
       setQueue(room.queue || []);
       setParticipants(room.participants || []);
@@ -78,13 +79,13 @@ function App() {
     // 재생 제어
     socket.on('playbackControlled', ({ action, track, isPlaying: newIsPlaying }) => {
       if (action === 'play' && track) {
-        setCurrentTrack(track);
+        setCurrentTrack(track && track.videoId ? track : null);
         setIsPlaying(true);
       } else if (action === 'pause') {
         setIsPlaying(false);
       } else if (action === 'next') {
         if (track) {
-          setCurrentTrack(track);
+          setCurrentTrack(track && track.videoId ? track : null);
           setIsPlaying(true);
         } else {
           setCurrentTrack(null);

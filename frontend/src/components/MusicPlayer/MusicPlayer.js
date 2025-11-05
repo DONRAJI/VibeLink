@@ -57,8 +57,8 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
       playerRef.current = null;
     }
 
-    // (초기화) 트랙이 없으면 상태 초기화 후 종료
-    if (!currentTrack) {
+    // (초기화) 트랙이 없거나 videoId가 없으면 상태 초기화 후 종료
+    if (!currentTrack || !currentTrack.videoId) {
       setIsPlayerReady(false);
       setInternalPlaying(false);
       setPlayerError(null);
@@ -66,7 +66,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
     }
 
     // (생성) API가 준비되었고, currentTrack이 있으면 새 플레이어 생성
-    console.log('새 YouTube 플레이어 생성:', currentTrack.videoId);
+  console.log('새 YouTube 플레이어 생성:', currentTrack.videoId);
     setPlayerError(null);
     setIsPlayerReady(false); // onReady 이벤트가 다시 true로 설정할 것임
 
