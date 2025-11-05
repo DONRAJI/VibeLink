@@ -1,9 +1,8 @@
 const Room = require('../models/Room');
 
 class RoomSocketHandler {
-  constructor(io, youtubeService) {
+  constructor(io) {
     this.io = io;
-    this.youtubeService = youtubeService;
   }
 
   handleConnection(socket) {
@@ -81,11 +80,6 @@ class RoomSocketHandler {
       const room = await Room.findOne({ code });
       if (!room) return;
 
-      // 큐가 정의되지 않았을 가능성에 대비
-      if (!Array.isArray(room.queue)) {
-        room.queue = [];
-      }
-
       const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
       await room.save();
@@ -118,15 +112,8 @@ class RoomSocketHandler {
           room.queue = room.queue.slice(1);
           room.isPlaying = true;
         } else {
-          // 큐가 비었을 때 추천곡 1개 선택 (이전 트랙 기반)
-          const recommended = await this.recommendNext(previousTrack, room);
-          if (recommended) {
-            room.currentTrack = recommended;
-            room.isPlaying = true;
-          } else {
-            room.currentTrack = null;
-            room.isPlaying = false;
-          }
+          room.currentTrack = null;
+          room.isPlaying = false;
         }
       }
       
@@ -184,34 +171,7 @@ class RoomSocketHandler {
     }
   }
 
-  // 이전 트랙을 시드로 YouTube 관련 영상에서 하나 선택
-  async recommendNext(previousTrack, room) {
-    try {
-      if (!previousTrack?.videoId || !this.youtubeService) return null;
-      const candidates = await this.youtubeService.getRelatedVideos(previousTrack.videoId, 10);
-
-      const existingIds = new Set([
-        ...(room.queue || []).map(t => t.videoId),
-        room.currentTrack?.videoId,
-        previousTrack.videoId,
-      ].filter(Boolean));
-
-      const chosen = (candidates || []).find(c => c.videoId && !existingIds.has(c.videoId));
-      if (!chosen) return null;
-
-      return {
-        videoId: chosen.videoId,
-        title: chosen.title,
-        thumbnailUrl: chosen.thumbnailUrl,
-        // addedBy는 추천으로 비워두거나 라벨을 줄 수 있음
-        addedBy: 'Recommended',
-        votes: 0,
-      };
-    } catch (e) {
-      console.error('추천곡 선택 실패:', e.message);
-      return null;
-    }
-  }
+  // (추천곡 선택 로직 제거됨)
 }
 
 module.exports = RoomSocketHandler;

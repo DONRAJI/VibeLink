@@ -78,42 +78,6 @@ class YouTubeService {
       return { embeddable: false, reason: error.message };
     }
   }
-
-  // 관련 동영상 추천 (relatedToVideoId 기반)
-  async getRelatedVideos(videoId, maxResults = 10) {
-    try {
-      if (!this.apiKey) {
-        throw new Error('YouTube API 키가 설정되지 않았습니다.');
-      }
-      if (!videoId) {
-        throw new Error('videoId가 필요합니다.');
-      }
-
-      const response = await axios.get(`${this.baseUrl}/search`, {
-        params: {
-          part: 'snippet',
-          relatedToVideoId: videoId,
-          type: 'video',
-          maxResults,
-          key: this.apiKey,
-        },
-      });
-
-      return (response.data.items || [])
-        .filter(item => item?.id?.videoId)
-        .map(item => ({
-          videoId: item.id.videoId,
-          title: item.snippet.title,
-          thumbnailUrl: item.snippet.thumbnails?.default?.url || '',
-          description: item.snippet.description,
-          channelTitle: item.snippet.channelTitle,
-          publishedAt: item.snippet.publishedAt,
-        }));
-    } catch (error) {
-      console.error('YouTube 관련 영상 조회 중 오류 발생:', error.message);
-      throw error;
-    }
-  }
 }
 
 module.exports = YouTubeService;
