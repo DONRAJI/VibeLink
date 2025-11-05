@@ -1,8 +1,9 @@
 const Room = require('../models/Room');
 
 class RoomSocketHandler {
-  constructor(io) {
+  constructor(io, youtubeService) {
     this.io = io;
+    this.youtubeService = youtubeService;
   }
 
   handleConnection(socket) {
@@ -79,6 +80,8 @@ class RoomSocketHandler {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
+      // 큐 안전 가드: 없으면 초기화
+      if (!Array.isArray(room.queue)) room.queue = [];
 
       const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
@@ -112,8 +115,15 @@ class RoomSocketHandler {
           room.queue = room.queue.slice(1);
           room.isPlaying = true;
         } else {
-          room.currentTrack = null;
-          room.isPlaying = false;
+          // 큐가 비었을 때 추천곡 1개 선택 (이전 트랙 기반)
+          const recommended = await this.recommendNext(previousTrack, room);
+          if (recommended) {
+            room.currentTrack = recommended;
+            room.isPlaying = true;
+          } else {
+            room.currentTrack = null;
+            room.isPlaying = false;
+          }
         }
       }
       
@@ -124,6 +134,34 @@ class RoomSocketHandler {
       this.io.to(code).emit('queueUpdated', room.queue);
     } catch (error) {
       console.error('재생 제어 오류:', error);
+    }
+  }
+
+  // 이전 트랙을 시드로 YouTube 관련 영상에서 하나 선택
+  async recommendNext(previousTrack, room) {
+    try {
+      if (!previousTrack?.videoId || !this.youtubeService) return null;
+      const candidates = await this.youtubeService.getRelatedVideos(previousTrack.videoId, 10);
+
+      const existingIds = new Set([
+        ...(room.queue || []).map(t => t.videoId),
+        room.currentTrack?.videoId,
+        previousTrack.videoId,
+      ].filter(Boolean));
+
+      const chosen = (candidates || []).find(c => c.videoId && !existingIds.has(c.videoId));
+      if (!chosen) return null;
+
+      return {
+        videoId: chosen.videoId,
+        title: chosen.title,
+        thumbnailUrl: chosen.thumbnailUrl,
+        addedBy: 'Recommended',
+        votes: 0,
+      };
+    } catch (e) {
+      console.error('추천곡 선택 실패:', e.message);
+      return null;
     }
   }
 

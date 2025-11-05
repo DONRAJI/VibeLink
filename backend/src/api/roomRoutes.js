@@ -32,7 +32,8 @@ router.post('/', async (req, res) => {
     const room = new Room({
       code,
       host,
-      participants: [] // 빈 배열로 시작, 소켓 연결 시에만 추가
+      participants: [], // 빈 배열로 시작, 소켓 연결 시에만 추가
+      queue: [] // 큐 기본값 초기화로 push 안전성 확보
     });
     
     await room.save();
