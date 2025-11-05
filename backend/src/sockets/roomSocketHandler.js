@@ -59,17 +59,18 @@ class RoomSocketHandler {
   async handleJoinRoom(socket, data) {
     try {
       // data는 문자열(과거 방식) 또는 { roomCode, nickname } 객체일 수 있음
-      const roomCode = typeof data === 'string' ? data : data?.roomCode;
+      const roomCode = (typeof data === 'string' ? data : data?.roomCode) || '';
+      const normalizedCode = roomCode.toString().toUpperCase();
       const nickname = typeof data === 'object' ? (data?.nickname || '') : '';
 
-      const room = await Room.findOne({ code: roomCode });
+      const room = await Room.findOne({ code: normalizedCode });
       if (!room) {
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
         return;
       }
       
-      socket.join(roomCode);
-      socket.roomCode = roomCode;
+      socket.join(normalizedCode);
+      socket.roomCode = normalizedCode;
       socket.userId = socket.id;
       if (nickname) socket.userName = nickname;
       
@@ -81,8 +82,8 @@ class RoomSocketHandler {
       }
       
       // 방 정보 전송
-      socket.emit('roomJoined', room);
-      this.io.to(roomCode).emit('participantsUpdated', room.participants);
+  socket.emit('roomJoined', room);
+  this.io.to(normalizedCode).emit('participantsUpdated', room.participants);
       
       console.log(`유저 ${socket.id}가 ${roomCode} 방에 참가했습니다.`);
     } catch (error) {
@@ -93,16 +94,17 @@ class RoomSocketHandler {
 
   async handleAddTrack(socket, roomCode, track, addedBy) {
     try {
-      const room = await Room.findOne({ code: roomCode });
+      const code = (roomCode || '').toString().toUpperCase();
+      const room = await Room.findOne({ code });
       if (!room) return;
       
   const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
       await room.save();
       
-      console.log(`${roomCode} 방에 '${track.title}' 트랙 추가 요청`);
-      this.io.to(roomCode).emit('trackAdded', newTrack);
-      this.io.to(roomCode).emit('queueUpdated', room.queue);
+      console.log(`${code} 방에 '${track.title}' 트랙 추가 요청`);
+      this.io.to(code).emit('trackAdded', newTrack);
+      this.io.to(code).emit('queueUpdated', room.queue);
     } catch (error) {
       console.error('트랙 추가 오류:', error);
     }
@@ -110,7 +112,8 @@ class RoomSocketHandler {
 
   async handleControlPlayback(socket, roomCode, action, track) {
     try {
-      const room = await Room.findOne({ code: roomCode });
+      const code = (roomCode || '').toString().toUpperCase();
+      const room = await Room.findOne({ code });
       if (!room) return;
       const previousTrack = room.currentTrack ? { ...room.currentTrack } : null;
 
@@ -146,9 +149,9 @@ class RoomSocketHandler {
       
       await room.save();
       
-      console.log(`${roomCode} 방에 '${action}' 컨트롤 요청`);
-      this.io.to(roomCode).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
-      this.io.to(roomCode).emit('queueUpdated', room.queue);
+      console.log(`${code} 방에 '${action}' 컨트롤 요청`);
+      this.io.to(code).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
+      this.io.to(code).emit('queueUpdated', room.queue);
     } catch (error) {
       console.error('재생 제어 오류:', error);
     }
@@ -185,7 +188,8 @@ class RoomSocketHandler {
 
   async handleVoteTrack(socket, roomCode, videoId, voteType) {
     try {
-      const room = await Room.findOne({ code: roomCode });
+      const code = (roomCode || '').toString().toUpperCase();
+      const room = await Room.findOne({ code });
       if (!room) return;
       
       const track = room.queue.find(t => t.videoId === videoId);
@@ -200,7 +204,7 @@ class RoomSocketHandler {
         room.queue.sort((a, b) => b.votes - a.votes);
         await room.save();
 
-        this.io.to(roomCode).emit('queueUpdated', room.queue);
+        this.io.to(code).emit('queueUpdated', room.queue);
       }
     } catch (error) {
       console.error('투표 오류:', error);
