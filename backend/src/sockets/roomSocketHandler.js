@@ -1,9 +1,8 @@
 const Room = require('../models/Room');
 
 class RoomSocketHandler {
-  constructor(io, youtubeService) {
+  constructor(io) {
     this.io = io;
-    this.youtubeService = youtubeService;
   }
 
   handleConnection(socket) {
@@ -24,10 +23,7 @@ class RoomSocketHandler {
       await this.handleControlPlayback(socket, roomCode, action, track);
     });
 
-    // Auto-DJ 토글 이벤트
-    socket.on('toggleAutoDJ', async ({ roomCode, enabled }) => {
-      await this.handleToggleAutoDJ(socket, roomCode, enabled);
-    });
+    // (Auto-DJ 기능 제거됨)
 
     // 트랙 투표 이벤트
     socket.on('voteTrack', async ({ roomCode, videoId, voteType }) => {
@@ -40,21 +36,7 @@ class RoomSocketHandler {
     });
   }
 
-  async handleToggleAutoDJ(socket, roomCode, enabled) {
-    try {
-      const room = await Room.findOne({ code: roomCode });
-      if (!room) return;
-
-      room.autoDjEnabled = !!enabled;
-      await room.save();
-
-      this.io.to(roomCode).emit('roomSettingsUpdated', {
-        autoDjEnabled: room.autoDjEnabled,
-      });
-    } catch (error) {
-      console.error('Auto-DJ 토글 오류:', error);
-    }
-  }
+  // (Auto-DJ 토글 핸들러 제거)
 
   async handleJoinRoom(socket, data) {
     try {
@@ -130,20 +112,8 @@ class RoomSocketHandler {
           room.queue = room.queue.slice(1);
           room.isPlaying = true;
         } else {
-          // 큐가 비어있을 때 Auto-DJ가 켜져 있으면 추천곡 자동 추가
-          if (room.autoDjEnabled && previousTrack && this.youtubeService) {
-            const autoTrack = await this.pickAutoDjTrack(room, previousTrack.videoId);
-            if (autoTrack) {
-              room.currentTrack = autoTrack;
-              room.isPlaying = true;
-            } else {
-              room.currentTrack = null;
-              room.isPlaying = false;
-            }
-          } else {
-            room.currentTrack = null;
-            room.isPlaying = false;
-          }
+          room.currentTrack = null;
+          room.isPlaying = false;
         }
       }
       
@@ -157,34 +127,7 @@ class RoomSocketHandler {
     }
   }
 
-  // Auto-DJ: 추천곡 중 중복을 제외하고 하나 선택
-  async pickAutoDjTrack(room, seedVideoId) {
-    try {
-      const candidates = await this.youtubeService.getRelatedVideos(seedVideoId, 10);
-      const existingIds = new Set([
-        ...(room.queue || []).map(t => t.videoId),
-        room.currentTrack?.videoId,
-      ].filter(Boolean));
-
-      const chosen = candidates.find(c => !existingIds.has(c.videoId));
-      if (!chosen) return null;
-
-      const newTrack = {
-        videoId: chosen.videoId,
-        title: chosen.title,
-        thumbnailUrl: chosen.thumbnailUrl,
-        addedBy: 'AutoDJ',
-        votes: 0,
-      };
-
-      // AutoDJ가 선택했지만 곧바로 재생하므로 큐에는 넣지 않음
-      // 필요시 히스토리/로그 용도로 별도 저장 가능
-      return newTrack;
-    } catch (e) {
-      console.error('Auto-DJ 추천 실패:', e.message);
-      return null;
-    }
-  }
+  // (Auto-DJ 추천 로직 제거)
 
   async handleVoteTrack(socket, roomCode, videoId, voteType) {
     try {

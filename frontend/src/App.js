@@ -29,8 +29,6 @@ function App() {
   const [nickname, setNickname] = useState('');
   const [isHost, setIsHost] = useState(false);
   const [participants, setParticipants] = useState([]);
-  // Auto-DJ 상태
-  const [autoDjEnabled, setAutoDjEnabled] = useState(false);
   
   // 음악 관련 상태
   const [currentTrack, setCurrentTrack] = useState(null);
@@ -60,7 +58,6 @@ function App() {
       setQueue(room.queue || []);
       setParticipants(room.participants || []);
       setIsHost(room.host === nickname);
-      setAutoDjEnabled(!!room.autoDjEnabled);
     });
 
     // 방 참가 실패
@@ -102,12 +99,6 @@ function App() {
       setParticipants(newParticipants);
     });
 
-    // 룸 설정(예: Auto-DJ) 업데이트
-    socket.on('roomSettingsUpdated', (payload) => {
-      if (typeof payload?.autoDjEnabled === 'boolean') {
-        setAutoDjEnabled(payload.autoDjEnabled);
-      }
-    });
 
     return () => {
       socket.off('connect');
@@ -119,7 +110,6 @@ function App() {
       socket.off('queueUpdated');
       socket.off('playbackControlled');
       socket.off('participantsUpdated');
-      socket.off('roomSettingsUpdated');
     };
   }, [nickname]);
 
@@ -161,7 +151,6 @@ function App() {
     setIsPlaying(false);
     setQueue([]);
     setParticipants([]);
-    setAutoDjEnabled(false);
   };
 
   // 트랙 추가
@@ -207,13 +196,7 @@ function App() {
     handleNextTrack();
   };
 
-  // Auto-DJ 토글 (호스트만 가능)
-  const handleToggleAutoDJ = () => {
-    if (!isHost) return;
-    const next = !autoDjEnabled;
-    setAutoDjEnabled(next);
-    socket.emit('toggleAutoDJ', { roomCode, enabled: next });
-  };
+  // (Auto-DJ 토글 제거)
 
   // 투표
   const handleVoteTrack = (videoId, voteType) => {
@@ -245,8 +228,6 @@ function App() {
           nickname={nickname}
           participants={participants}
           isHost={isHost}
-          autoDjEnabled={autoDjEnabled}
-          onToggleAutoDJ={handleToggleAutoDJ}
           onLeaveRoom={handleLeaveRoom}
         />
         

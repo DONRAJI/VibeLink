@@ -1,7 +1,7 @@
 import React from 'react';
 import './RoomHeader.css';
 
-const RoomHeader = ({ roomCode, nickname, participants, isHost, onLeaveRoom, autoDjEnabled, onToggleAutoDJ }) => {
+const RoomHeader = ({ roomCode, nickname, participants, isHost, onLeaveRoom }) => {
   const handleLeaveRoom = () => {
     if (window.confirm('정말로 방을 나가시겠습니까?')) {
       onLeaveRoom();
@@ -58,15 +58,6 @@ const RoomHeader = ({ roomCode, nickname, participants, isHost, onLeaveRoom, aut
         </div>
         
         <div className="header-actions">
-          {isHost && (
-            <button 
-              className={`autodj-btn ${autoDjEnabled ? 'on' : 'off'}`}
-              onClick={onToggleAutoDJ}
-              title="자동 DJ 토글"
-            >
-              {autoDjEnabled ? '🤖 Auto-DJ ON' : '🤖 Auto-DJ OFF'}
-            </button>
-          )}
           <button 
             className="leave-btn"
             onClick={handleLeaveRoom}

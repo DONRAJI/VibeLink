@@ -9,9 +9,8 @@ const { Server } = require("socket.io");
 const roomRoutes = require('./api/roomRoutes');
 const searchRoutes = require('./api/searchRoutes');
 
-// 소켓 핸들러 및 서비스 임포트
+// 소켓 핸들러 임포트
 const RoomSocketHandler = require('./sockets/roomSocketHandler');
-const YouTubeService = require('./services/youtubeService');
 
 const app = express();
 
@@ -94,8 +93,7 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/search', searchRoutes);
 
 // WebSocket 이벤트 핸들러 초기화
-const youtubeService = new YouTubeService(process.env.YOUTUBE_API_KEY);
-const roomSocketHandler = new RoomSocketHandler(io, youtubeService);
+const roomSocketHandler = new RoomSocketHandler(io);
 io.on('connection', (socket) => {
   roomSocketHandler.handleConnection(socket);
 });
