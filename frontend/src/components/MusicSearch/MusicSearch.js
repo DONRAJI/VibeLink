@@ -67,18 +67,15 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     }
   }, [searchQuery, currentRoom, lastSearchTime]);
 
+// 👇 [수정됨] 'trackWithUser'를 만들지 않고, 원본 'track' 객체를 그대로 전달합니다.
   const handleAddTrack = useCallback((track) => {
-    const trackWithUser = {
-      ...track,
-      addedBy: nickname
-    };
-    onAddTrack(trackWithUser);
+    onAddTrack(track); // 'trackWithUser' 대신 'track'을 전달
     
     // 성공적인 추가 후 검색 결과 정리
     setSearchResults([]);
     setSearchQuery('');
     setError(''); // 에러 상태도 초기화
-  }, [nickname, onAddTrack]);
+  }, [onAddTrack]); // 'nickname' 의존성 제거
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
