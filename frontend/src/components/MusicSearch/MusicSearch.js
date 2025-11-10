@@ -66,7 +66,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, currentRoom, lastSearchTime]);
+  }, [searchQuery, currentRoom, lastSearchTime, platform]);
 
   // YouTube 결과는 그대로 추가, Spotify 결과는 유사한 YouTube 영상으로 변환 후 추가
   const handleAddTrack = useCallback(async (track) => {
