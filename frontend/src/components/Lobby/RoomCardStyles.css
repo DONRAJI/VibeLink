@@ -2,15 +2,16 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background: #1e1e1e;
-  border: 1px solid #2c2c2c;
+  background: #ffffff;
+  border: 1px solid #e5e8ec;
   border-radius: 12px;
   padding: 12px 14px;
   cursor: pointer;
-  transition: border-color .15s, transform .15s;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
 }
 .room-card:hover {
-  border-color: #444;
+  border-color: #ccd3db;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
   transform: translateY(-2px);
 }
 .room-card-header {
@@ -18,14 +19,10 @@
   justify-content: space-between;
   font-size: 12px;
 }
-.badge {
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: #333;
-}
+.badge { padding: 2px 6px; border-radius: 6px; background: #eef2f7; color:#333; }
 .badge.platform.youtube { background: #ff0000; }
 .badge.platform.spotify { background: #1db954; }
-.badge.count { background: #2d2d2d; }
+.badge.count { background: #eef2f7; }
 .room-title {
   font-size: 16px;
   font-weight: 600;
@@ -38,13 +35,13 @@
   /* 표준 속성 추가 */
   line-clamp: 2;
 }
-.room-host { font-size: 12px; color: #aaa; }
+.room-host { font-size: 12px; color: #666; }
 .room-track {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #ddd;
+  color: #555;
 }
 .room-track img {
   width: 40px;
@@ -53,12 +50,12 @@
   border-radius: 4px;
 }
 .track-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.state.playing { color: #4caf50; }
-.state.paused { color: #f5a623; }
+.state.playing { color: #2e7d32; }
+.state.paused { color: #f39c12; }
 .room-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-.tag { font-size: 11px; background: #272727; padding: 2px 5px; border-radius: 4px; }
-.room-footer { display: flex; justify-content: space-between; font-size: 11px; color: #777; margin-top: auto; }
-.enter { color: #5ba8ff; font-weight: 600; }
+.tag { font-size: 11px; background: #f1f4f8; color:#444; padding: 2px 5px; border-radius: 4px; }
+.room-footer { display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: auto; }
+.enter { color: #5a72dd; font-weight: 600; }
 @media (max-width: 600px) {
   .room-card { padding: 10px 12px; }
   .room-title { font-size: 15px; }
