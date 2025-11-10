@@ -1,4 +1,4 @@
-// 원래 App 컴포넌트 (채팅 추가 전 버전) 복원
+import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import RoomEntry from './components/RoomEntry/RoomEntry';
