@@ -18,8 +18,10 @@ class RoomSocketHandler {
     socket.on('addTrack', async ({ roomCode, track, addedBy }) => {
       await this.handleAddTrack(socket, roomCode, track, addedBy);
     });
-
-    // 재생 제어 이벤트
+    // 채팅 메시지 수신
+    socket.on('chatMessage', async ({ roomCode, user, message }) => {
+      await this.handleChatMessage(socket, roomCode, user, message);
+    });
     socket.on('controlPlayback', async ({ roomCode, action, track }) => {
       await this.handleControlPlayback(socket, roomCode, action, track);
     });
@@ -68,7 +70,9 @@ class RoomSocketHandler {
   socket.emit('roomJoined', room);
   this.io.to(normalizedCode).emit('participantsUpdated', room.participants);
 
-  // (채팅 기능 롤백: 히스토리 전송 없음)
+  // 기존 채팅 기록 (최대 100개) 전송
+  const history = (room.chatMessages || []).slice(-100);
+  socket.emit('chatHistory', history);
       
       console.log(`유저 ${socket.id}가 ${roomCode} 방에 참가했습니다.`);
     } catch (error) {
@@ -194,7 +198,31 @@ class RoomSocketHandler {
     }
   }
 
-  // (채팅 기능 롤백: handleChatMessage 제거)
+  async handleChatMessage(socket, roomCode, user, message) {
+    try {
+      const code = (roomCode || '').toString().toUpperCase();
+      if (!message || !code) return;
+      const room = await Room.findOne({ code });
+      if (!room) return;
+
+      const entry = {
+        user: (user || socket.userName || '익명').substring(0, 50),
+        message: message.toString().substring(0, 500),
+        timestamp: new Date()
+      };
+
+      if (!Array.isArray(room.chatMessages)) room.chatMessages = [];
+      room.chatMessages.push(entry);
+      if (room.chatMessages.length > 500) {
+        room.chatMessages = room.chatMessages.slice(-500);
+      }
+      await room.save();
+
+      this.io.to(code).emit('newChatMessage', entry);
+    } catch (error) {
+      console.error('채팅 메시지 처리 오류:', error);
+    }
+  }
 
   async handleDisconnect(socket) {
     try {

@@ -6,6 +6,7 @@ import RoomHeader from './components/RoomHeader/RoomHeader';
 import MusicPlayer from './components/MusicPlayer/MusicPlayer';
 import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
 import MusicSearch from './components/MusicSearch/MusicSearch';
+import ChatWindow from './components/ChatWindow/ChatWindow';
 import './App.css';
 
 const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', {
@@ -26,6 +27,7 @@ function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
 
   useEffect(() => {
     socket.on('connect', () => console.log('✅ 서버 연결:', socket.id));
@@ -38,6 +40,7 @@ function App() {
       setQueue(room.queue || []);
       setParticipants(room.participants || []);
       setIsHost(room.host === nickname);
+      setChatMessages([]);
     });
 
     socket.on('roomError', (err) => alert(err.message));
@@ -62,6 +65,10 @@ function App() {
     });
     socket.on('participantsUpdated', (p) => setParticipants(p));
 
+  // 채팅 기록/메시지
+  socket.on('chatHistory', (history) => setChatMessages(history || []));
+  socket.on('newChatMessage', (entry) => setChatMessages(prev => [...prev, entry]));
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
@@ -72,6 +79,8 @@ function App() {
       socket.off('queueUpdated');
       socket.off('playbackControlled');
       socket.off('participantsUpdated');
+      socket.off('chatHistory');
+      socket.off('newChatMessage');
     };
   }, [nickname]);
 
@@ -88,6 +97,7 @@ function App() {
     socket.emit('disconnect');
     setCurrentView('entry');
     setRoomCode(''); setNickname(''); setIsHost(false); setCurrentTrack(null); setIsPlaying(false); setQueue([]); setParticipants([]);
+    setChatMessages([]);
   };
   const handleAddTrack = (track) => socket.emit('addTrack', { roomCode, track, addedBy: nickname });
   const handlePlayPause = () => {
@@ -99,6 +109,12 @@ function App() {
   const handleTrackEnded = () => handleNextTrack();
   const handleVoteTrack = (videoId, voteType) => socket.emit('voteTrack', { roomCode, videoId, voteType });
 
+  // 채팅 전송
+  const handleSendMessage = (text) => {
+    if (!text || !roomCode) return;
+    socket.emit('chatMessage', { roomCode, user: nickname, message: text });
+  };
+
   if (showSplash) return <SplashScreen onComplete={handleSplashComplete} />;
   if (currentView === 'entry') return <RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />;
 
@@ -109,6 +125,8 @@ function App() {
         <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
         <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
         <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} />
+
+  <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
       </div>
     </div>
   );
