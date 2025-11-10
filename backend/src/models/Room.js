@@ -16,12 +16,6 @@ const roomSchema = new mongoose.Schema({
     title: String,
     thumbnailUrl: String
   },
-  // 채팅 메시지 기록 (최근 N개 유지)
-  chatMessages: [{
-    user: String,
-    message: String,
-    timestamp: { type: Date, default: Date.now }
-  }],
   isPlaying: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
