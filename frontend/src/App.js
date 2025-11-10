@@ -5,6 +5,7 @@ import io from 'socket.io-client';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import RoomEntry from './components/RoomEntry/RoomEntry';
 import RoomHeader from './components/RoomHeader/RoomHeader';
+import ChatWindow from './components/ChatWindow/ChatWindow';
 import MusicPlayer from './components/MusicPlayer/MusicPlayer';
 import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
 import MusicSearch from './components/MusicSearch/MusicSearch';
@@ -34,6 +35,8 @@ function App() {
   const [currentTrack, setCurrentTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Socket.IO 이벤트 리스너 설정
   useEffect(() => {
@@ -59,6 +62,7 @@ function App() {
       setQueue(room.queue || []);
       setParticipants(room.participants || []);
       setIsHost(room.host === nickname);
+      setChatMessages([]); // 초기화, 이후 history 이벤트로 수신
     });
 
     // 방 참가 실패
@@ -100,6 +104,22 @@ function App() {
       setParticipants(newParticipants);
     });
 
+    // 채팅 기록 수신
+    socket.on('chatHistory', (history) => {
+      setChatMessages(history || []);
+    });
+
+    // 새 채팅 메시지 수신
+    socket.on('newChatMessage', (entry) => {
+      setChatMessages(prev => [...prev, entry]);
+      // 현재 뷰가 room이지만 포커스가 다른 곳일 때 unread 증가 로직 확장 가능
+      if (currentView === 'room') {
+        // 단순히 메시지 추가만
+      } else {
+        setUnreadCount(c => c + 1);
+      }
+    });
+
 
     return () => {
       socket.off('connect');
@@ -111,8 +131,10 @@ function App() {
       socket.off('queueUpdated');
       socket.off('playbackControlled');
       socket.off('participantsUpdated');
+      socket.off('chatHistory');
+      socket.off('newChatMessage');
     };
-  }, [nickname]);
+  }, [nickname, currentView]);
 
   // 스플래시 화면 완료
   const handleSplashComplete = () => {
@@ -152,6 +174,8 @@ function App() {
     setIsPlaying(false);
     setQueue([]);
     setParticipants([]);
+    setChatMessages([]);
+    setUnreadCount(0);
   };
 
   // 트랙 추가
@@ -208,6 +232,16 @@ function App() {
     });
   };
 
+  // 채팅 전송
+  const handleSendMessage = (text) => {
+    if (!text || !roomCode) return;
+    socket.emit('chatMessage', {
+      roomCode,
+      user: nickname,
+      message: text
+    });
+  };
+
   if (showSplash) {
     return <SplashScreen onComplete={handleSplashComplete} />;
   }
@@ -253,6 +287,13 @@ function App() {
           onAddTrack={handleAddTrack}
           currentRoom={roomCode}
           nickname={nickname}
+        />
+
+        <ChatWindow
+          roomCode={roomCode}
+          nickname={nickname}
+          messages={chatMessages}
+          onSendMessage={handleSendMessage}
         />
       </div>
     </div>
