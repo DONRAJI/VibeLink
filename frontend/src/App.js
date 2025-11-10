@@ -1,303 +1,259 @@
-// /frontend/src/App.js
+import React, { useEffect, useState, useRef } from 'react';
+import './MusicPlayer.css';
 
-import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
-import SplashScreen from './components/SplashScreen/SplashScreen';
-import RoomEntry from './components/RoomEntry/RoomEntry';
-import RoomHeader from './components/RoomHeader/RoomHeader';
-import ChatWindow from './components/ChatWindow/ChatWindow';
-import MusicPlayer from './components/MusicPlayer/MusicPlayer';
-import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
-import MusicSearch from './components/MusicSearch/MusicSearch';
-import './App.css';
+const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) => {
+  // --- API 및 플레이어 상태 관리 ---
+  const playerRef = useRef(null); // YouTube 플레이어 객체 인스턴스 저장
+  const [isApiReady, setIsApiReady] = useState(false); // YouTube API 스크립트 로드 여부
+  const [isPlayerReady, setIsPlayerReady] = useState(false); // 플레이어 인스턴스 준비 여부
+  
+  // --- 내부 상태 관리 ---
+  const [internalPlaying, setInternalPlaying] = useState(isPlaying);
+  const [playerError, setPlayerError] = useState(null);
 
-// Socket.IO 연결 - 환경변수 사용 및 연결 안정성 개선
-const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', {
-  reconnection: true,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 1000,
-  timeout: 20000,
-  forceNew: true
-});
+  // --- Props를 Ref에 저장 (이벤트 핸들러에서 최신 Props 사용) ---
+  // useEffect 안의 이벤트 핸들러는 생성 시점의 state/props를 기억합니다.
+  // 항상 최신 onEnded 함수를 참조하기 위해 ref를 사용합니다.
+  const onEndedRef = useRef(onEnded);
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
 
-function App() {
-  // 앱 상태
-  const [showSplash, setShowSplash] = useState(true);
-  const [currentView, setCurrentView] = useState('entry'); // 'entry', 'room'
-  
-  // 방 관련 상태
-  const [roomCode, setRoomCode] = useState('');
-  const [nickname, setNickname] = useState('');
-  const [isHost, setIsHost] = useState(false);
-  const [participants, setParticipants] = useState([]);
-  
-  // 음악 관련 상태
-  const [currentTrack, setCurrentTrack] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [queue, setQueue] = useState([]);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  // --- 1. YouTube IFrame API 스크립트 로드 (컴포넌트 마운트 시 1회) ---
+  useEffect(() => {
+    // window.YT가 이미 있는지 확인 (예: 다른 곳에서 이미 로드)
+    if (window.YT && window.YT.Player) {
+      setIsApiReady(true);
+    } else {
+      // 스크립트 태그 동적 생성
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      
+      // API가 로드되면 이 전역 함수를 호출함
+      window.onYouTubeIframeAPIReady = () => {
+        console.log('YouTube IFrame API가 준비되었습니다.');
+        setIsApiReady(true);
+      };
+      
+      document.body.appendChild(tag);
 
-  // Socket.IO 이벤트 리스너 설정
-  useEffect(() => {
-    // 연결 상태 로깅
-    socket.on('connect', () => {
-      console.log('✅ 서버에 연결되었습니다:', socket.id);
-    });
+      // 컴포넌트 언마운트 시 콜백 정리
+      return () => {
+        window.onYouTubeIframeAPIReady = null;
+      };
+    }
+  }, []); // 빈 배열: 마운트 시 1회만 실행
 
-    socket.on('disconnect', (reason) => {
-      console.log('❌ 서버 연결이 끊어졌습니다:', reason);
-    });
+  // --- 2. 플레이어 생성/변경 (currentTrack 또는 API 준비 상태 변경 시) ---
+  useEffect(() => {
+    // API가 준비되지 않았으면 아무것도 하지 않음
+    if (!isApiReady) {
+      return;
+    }
 
-    socket.on('connect_error', (error) => {
-      console.error('🔌 연결 오류:', error);
-    });
+    // (정리) 기존 플레이어가 있다면 파괴
+    if (playerRef.current) {
+      playerRef.current.destroy();
+      playerRef.current = null;
+    }
 
-    // 방 참가 성공
-    socket.on('roomJoined', (room) => {
-      console.log('✅ 방에 성공적으로 참가했습니다:', room.code);
-      // currentTrack 정합성 보정: videoId 없으면 null로 처리
-      setCurrentTrack(room.currentTrack && room.currentTrack.videoId ? room.currentTrack : null);
-      setIsPlaying(room.isPlaying);
-      setQueue(room.queue || []);
-      setParticipants(room.participants || []);
-      setIsHost(room.host === nickname);
-      setChatMessages([]); // 초기화, 이후 history 이벤트로 수신
-    });
+    // (초기화) 트랙이 없거나 videoId가 없으면 상태 초기화 후 종료
+    if (!currentTrack || !currentTrack.videoId) {
+      setIsPlayerReady(false);
+      setInternalPlaying(false);
+      setPlayerError(null);
+      return;
+    }
 
-    // 방 참가 실패
-    socket.on('roomError', (error) => {
-      alert(error.message);
-    });
+    // (생성) API가 준비되었고, currentTrack이 있으면 새 플레이어 생성
+  console.log('새 YouTube 플레이어 생성:', currentTrack.videoId);
+    setPlayerError(null);
+    setIsPlayerReady(false); // onReady 이벤트가 다시 true로 설정할 것임
 
-    // 트랙 추가됨
-    socket.on('trackAdded', (track) => {
-      setQueue(prevQueue => [...prevQueue, track]);
-    });
+    playerRef.current = new window.YT.Player('youtube-player-container', {
+      videoId: currentTrack.videoId,
+      playerVars: {
+        'autoplay': isPlaying ? 1 : 0, // 부모의 isPlaying 상태에 따라 자동 재생
+        'controls': 1,       // 컨트롤 표시
+        'rel': 0,            // 관련 동영상 표시 안 함
+        'modestbranding': 1, // YouTube 로고 최소화
+        'enablejsapi': 1,    // API 제어 활성화
+        'origin': window.location.origin // API 사용을 위한 출처 명시
+      },
+      events: {
+        'onReady': (event) => {
+          console.log('플레이어 준비 완료:', currentTrack.videoId);
+          setIsPlayerReady(true);
+          // 내부 재생 상태를 부모 상태와 동기화
+          setInternalPlaying(isPlaying);
+        },
+        'onStateChange': (event) => {
+          const state = event.data;
+          console.log('플레이어 상태 변경:', state);
+          
+          // === 🔥 핵심: 영상 재생 종료 감지 ===
+          if (state === window.YT.PlayerState.ENDED) {
+            console.log('영상 재생 종료됨 -> onEnded() 호출');
+            onEndedRef.current(); // Ref를 통해 최신 onEnded 함수 호출
+          }
+          // === (핵심 끝) ===
 
-    // 큐 업데이트
-    socket.on('queueUpdated', (newQueue) => {
-      setQueue(newQueue);
-    });
+          // 플레이어 내부의 재생/일시정지 버튼 클릭 시 내부 상태 반영
+          if (state === window.YT.PlayerState.PLAYING) {
+            setInternalPlaying(true);
+          } else if (state === window.YT.PlayerState.PAUSED) {
+            setInternalPlaying(false);
+          }
+        },
+        'onError': (event) => {
+          console.error('YouTube 플레이어 오류:', event.data, 'Video ID:', currentTrack.videoId);
+          setPlayerError({ message: `오류 코드 ${event.data}` });
+          // 참고: 오류 발생 시(예: "볼 수 없는 동영상") 다음 곡으로 넘기려면
+          // onEndedRef.current(); // 이 주석을 해제하세요.
+        }
+      }
+    });
 
-    // 재생 제어
-    socket.on('playbackControlled', ({ action, track, isPlaying: newIsPlaying }) => {
-      if (action === 'play' && track) {
-        setCurrentTrack(track && track.videoId ? track : null);
-        setIsPlaying(true);
-      } else if (action === 'pause') {
-        setIsPlaying(false);
-      } else if (action === 'next') {
-        if (track) {
-          setCurrentTrack(track && track.videoId ? track : null);
-          setIsPlaying(true);
-        } else {
-          setCurrentTrack(null);
-          setIsPlaying(false);
-        }
-      }
-      setIsPlaying(newIsPlaying);
-    });
+    // 이 useEffect가 다시 실행될 때(트랙 변경 시) 기존 플레이어 파괴
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+    };
+    // isPlaying은 'autoplay' 변수로만 사용하고, 의존성 배열에서 제외
+    // (isPlaying 변경 시 플레이어를 파괴/재생성하는 것을 방지)
+    // 
+    // === 📍 수정된 부분 ===
+    // ESLint 경고를 오류로 처리하는 CI 환경을 위해 이 라인을 명시적으로 비활성화합니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack, isApiReady]);
 
-    // 참가자 목록 업데이트
-    socket.on('participantsUpdated', (newParticipants) => {
-      setParticipants(newParticipants);
-    });
+  // --- 3. 외부 재생/일시정지 제어 (부모의 isPlaying 변경 시) ---
+  useEffect(() => {
+    // 내부 UI 상태(버튼 모양)를 부모 상태와 동기화
+    setInternalPlaying(isPlaying);
 
-    // 채팅 기록 수신
-    socket.on('chatHistory', (history) => {
-      setChatMessages(history || []);
-    });
-
-    // 새 채팅 메시지 수신
-    socket.on('newChatMessage', (entry) => {
-      setChatMessages(prev => [...prev, entry]);
-      // 현재 뷰가 room이지만 포커스가 다른 곳일 때 unread 증가 로직 확장 가능
-      if (currentView === 'room') {
-        // 단순히 메시지 추가만
-      } else {
-        setUnreadCount(c => c + 1);
-      }
-    });
+    // 플레이어가 준비되었고, API 제어 객체가 있을 때만 명령 전송
+    if (isPlayerReady && playerRef.current) {
+      if (isPlaying) {
+        console.log('외부 제어: playVideo() 호출');
+        playerRef.current.playVideo();
+      } else {
+        console.log('외부 제어: pauseVideo() 호출');
+        playerRef.current.pauseVideo();
+      }
+    }
+  }, [isPlaying, isPlayerReady]); // isPlaying(부모) 또는 isPlayerReady가 변경될 때 실행
 
 
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-      socket.off('connect_error');
-      socket.off('roomJoined');
-      socket.off('roomError');
-      socket.off('trackAdded');
-      socket.off('queueUpdated');
-      socket.off('playbackControlled');
-      socket.off('participantsUpdated');
-      socket.off('chatHistory');
-      socket.off('newChatMessage');
-    };
-  }, [nickname, currentView]);
+  // --- 4. 로컬 컨트롤 버튼 핸들러 ---
+  // (이 버튼들은 단지 부모의 상태 변경을 "요청"할 뿐입니다)
+  const handlePlay = () => {
+    console.log('재생 요청 (부모에게 전달)');
+    onPlayPause();
+  };
 
-  // 스플래시 화면 완료
-  const handleSplashComplete = () => {
-    setShowSplash(false);
-  };
+  const handlePause = () => {
+    console.log('일시정지 요청 (부모에게 전달)');
+    onPlayPause();
+  };
 
-  // 방 생성
-  const handleRoomCreated = (code, hostNickname) => {
-    setRoomCode(code);
-    setNickname(hostNickname);
-    setIsHost(true);
-    setCurrentView('room');
-    
-    // 방에 참가
-    socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
-  };
+  // --- 5. 렌더링 ---
 
-  // 방 참가
-  const handleRoomJoined = (code, userNickname) => {
-    setRoomCode(code);
-    setNickname(userNickname);
-    setIsHost(false);
-    setCurrentView('room');
-    
-    // 방에 참가
-    socket.emit('joinRoom', { roomCode: code, nickname: userNickname });
-  };
+  // 트랙이 없을 때 표시 (기존과 동일)
+  if (!currentTrack) {
+    return (
+      <div className="music-player empty">
+        <div className="empty-state">
+          <div className="empty-icon">🎵</div>
+          <h3>재생할 곡이 없습니다</h3>
+          <p>플레이리스트에서 곡을 선택하거나 검색하여 추가해보세요.</p>
+        </div>
+      </div>
+    );
+  }
 
-  // 방 나가기
-  const handleLeaveRoom = () => {
-    socket.emit('disconnect');
-    setCurrentView('entry');
-    setRoomCode('');
-    setNickname('');
-    setIsHost(false);
-    setCurrentTrack(null);
-    setIsPlaying(false);
-    setQueue([]);
-    setParticipants([]);
-    setChatMessages([]);
-    setUnreadCount(0);
-  };
+  // 트랙이 있을 때
+  return (
+    <div className="music-player">
+      <div className="player-container">
+        <div className="video-container">
+          {playerError && (
+            // (오류 표시 로직 - 기존과 거의 동일)
+            <div className="player-error">
+               <p>플레이어 오류: {playerError?.message || '알 수 없는 오류'}</p>
+               <p>문제가 발생한 비디오 ID: {currentTrack.videoId}</p>
+               <button 
+                 onClick={() => {
+                   console.log('직접 YouTube 링크로 이동');
+                   window.open(`https://www.youtube.com/watch?v=${currentTrack.videoId}`, '_blank');
+                 }}
+                 style={{ 
+                   margin: '10px', 
+                   padding: '5px 10px', 
+                   backgroundColor: '#ff0000', 
+                   color: 'white', 
+                   border: 'none', 
+                   borderRadius: '4px',
+                   cursor: 'pointer'
+                 }}
+               >
+                 YouTube에서 직접 보기
+               </button>
+            </div>
+          )}
+          
+          {/* === <iframe> 대신 플레이어가 삽입될 Div === */}
+          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', backgroundColor: '#000' }}>
+            <div 
+              id="youtube-player-container"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%'
+              }}
+            />
+          </div>
+          {/* === (변경 끝) === */}
 
-  // 트랙 추가
-  const handleAddTrack = (track) => {
-    socket.emit('addTrack', {
-      roomCode,
-      track,
-      addedBy: nickname
-    });
-  };
+        </div>
+        
+        <div className="player-info">
+          <div className="track-info">
+            <h3 className="track-title">{currentTrack.title}</h3>
+            <div className="track-meta">
+              <span className="track-source">YouTube</span>
+              {currentTrack.addedBy && (
+                <span className="track-added-by">추가: {currentTrack.addedBy}</span>
+              )}
+            </div>
+          </div>
+          
+          <div className="player-controls">
+            <button
+              className={`control-btn ${internalPlaying ? 'playing' : ''}`}
+              // internalPlaying을 기준으로 버튼 모양 변경
+            _ onClick={internalPlaying ? handlePause : handlePlay}
+              disabled={!isHost}
+            >
+              {internalPlaying ? '⏸️ 일시정지' : '▶️ 재생'}
+            </button>
+            
+            <button
+              className="control-btn next-btn"
+              onClick={onNext}
+              disabled={!isHost}
+            >
+              ⏭️ 다음 곡
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-  // 재생/일시정지
-  const handlePlayPause = () => {
-    const newIsPlaying = !isPlaying;
-    setIsPlaying(newIsPlaying);
-    
-    socket.emit('controlPlayback', {
-      roomCode,
-      action: newIsPlaying ? 'play' : 'pause',
-      track: currentTrack
-    });
-  };
-
-  // 다음 곡 재생
-  const handleNextTrack = () => {
-    socket.emit('controlPlayback', {
-      roomCode,
-      action: 'next'
-    });
-  };
-
-  // 특정 곡 재생
-  const handlePlayTrack = (track) => {
-    socket.emit('controlPlayback', {
-      roomCode,
-      action: 'play',
-      track
-    });
-  };
-
-  // 곡이 끝남
-  const handleTrackEnded = () => {
-    handleNextTrack();
-  };
-
-  // (Auto-DJ 토글 제거)
-
-  // 투표
-  const handleVoteTrack = (videoId, voteType) => {
-    socket.emit('voteTrack', {
-      roomCode,
-      videoId,
-      voteType
-    });
-  };
-
-  // 채팅 전송
-  const handleSendMessage = (text) => {
-    if (!text || !roomCode) return;
-    socket.emit('chatMessage', {
-      roomCode,
-      user: nickname,
-      message: text
-    });
-  };
-
-  if (showSplash) {
-    return <SplashScreen onComplete={handleSplashComplete} />;
-  }
-
-  if (currentView === 'entry') {
-    return (
-      <RoomEntry 
-        onRoomCreated={handleRoomCreated}
-        onRoomJoined={handleRoomJoined}
-      />
-    );
-  }
-
-  return (
-    <div className="app">
-      <div className="app-container">
-        <RoomHeader
-          roomCode={roomCode}
-          nickname={nickname}
-          participants={participants}
-          isHost={isHost}
-          onLeaveRoom={handleLeaveRoom}
-        />
-        
-        <MusicPlayer
-          currentTrack={currentTrack}
-          isPlaying={isPlaying}
-          onPlayPause={handlePlayPause}
-          onNext={handleNextTrack}
-          onEnded={handleTrackEnded}
-          isHost={isHost}
-        />
-        
-        <PlaylistQueue
-          queue={queue}
-          currentTrack={currentTrack}
-          onPlayTrack={handlePlayTrack}
-          onVoteTrack={handleVoteTrack}
-          isHost={isHost}
-        />
-        
-        <MusicSearch
-          onAddTrack={handleAddTrack}
-          currentRoom={roomCode}
-          nickname={nickname}
-        />
-
-        <ChatWindow
-          roomCode={roomCode}
-          nickname={nickname}
-          messages={chatMessages}
-          onSendMessage={handleSendMessage}
-        />
-      </div>
-    </div>
-  );
-}
-
-export default App;
+export default MusicPlayer;
