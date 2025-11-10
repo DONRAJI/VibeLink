@@ -8,6 +8,7 @@ const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000
 const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [platform, setPlatform] = useState('youtube'); // 'youtube' | 'spotify'
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSearchTime, setLastSearchTime] = useState(0);
@@ -43,7 +44,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     setLastSearchTime(now);
 
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(trimmedQuery)}`, {
+      const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(trimmedQuery)}&platform=${platform}`, {
         timeout: 15000 // 15초 타임아웃
       });
       
@@ -67,15 +68,33 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     }
   }, [searchQuery, currentRoom, lastSearchTime]);
 
-// 👇 [수정됨] 'trackWithUser'를 만들지 않고, 원본 'track' 객체를 그대로 전달합니다.
-  const handleAddTrack = useCallback((track) => {
-    onAddTrack(track); // 'trackWithUser' 대신 'track'을 전달
-    
-    // 성공적인 추가 후 검색 결과 정리
-    setSearchResults([]);
-    setSearchQuery('');
-    setError(''); // 에러 상태도 초기화
-  }, [onAddTrack]); // 'nickname' 의존성 제거
+  // YouTube 결과는 그대로 추가, Spotify 결과는 유사한 YouTube 영상으로 변환 후 추가
+  const handleAddTrack = useCallback(async (track) => {
+    try {
+      if (platform === 'youtube') {
+        onAddTrack(track);
+      } else {
+        // Spotify -> YouTube 변환 검색
+        const q = `${track.title} ${track.artists || ''}`.trim();
+        const resp = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(q)}&platform=youtube`, {
+          timeout: 15000
+        });
+        const yt = (resp.data || [])[0];
+        if (!yt) {
+          setError('해당 Spotify 트랙에 대한 YouTube 영상을 찾지 못했습니다. 다른 검색어를 시도해보세요.');
+          return;
+        }
+        onAddTrack(yt);
+      }
+
+      // 성공적인 추가 후 검색 결과 정리
+      setSearchResults([]);
+      setSearchQuery('');
+      setError('');
+    } catch (e) {
+      setError('트랙 추가 중 오류가 발생했습니다.');
+    }
+  }, [onAddTrack, platform]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -87,7 +106,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     <div className="music-search">
       <div className="search-header">
         <h3>🎵 음악 검색</h3>
-        <p>YouTube에서 원하는 음악을 검색하고 플레이리스트에 추가하세요.</p>
+        <p>{platform === 'youtube' ? 'YouTube에서 원하는 음악을 검색하고 플레이리스트에 추가하세요.' : 'Spotify 트랙을 검색해 플레이리스트에 추가하세요.'}</p>
       </div>
 
       <div className="search-form">
@@ -112,6 +131,16 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
               '🔍 검색'
             )}
           </button>
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            className="platform-select"
+            disabled={!currentRoom || isLoading}
+            title="검색 플랫폼 선택"
+          >
+            <option value="youtube">YouTube</option>
+            <option value="spotify">Spotify</option>
+          </select>
         </div>
         
         {!currentRoom && (
@@ -146,8 +175,18 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
                 <div className="result-info">
                   <h5 className="result-title">{track.title}</h5>
                   <div className="result-meta">
-                    <span className="result-source">YouTube</span>
-                    <span className="result-id">ID: {track.videoId}</span>
+                    {platform === 'youtube' ? (
+                      <>
+                        <span className="result-source">YouTube</span>
+                        <span className="result-id">ID: {track.videoId}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="result-source">Spotify</span>
+                        <span className="result-id">ID: {track.id}</span>
+                        {track.artists && <span className="result-artists">👤 {track.artists}</span>}
+                      </>
+                    )}
                   </div>
                 </div>
                 
