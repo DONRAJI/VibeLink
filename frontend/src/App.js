@@ -21,7 +21,6 @@ const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', 
 
 // 라우팅 내부에서 소켓/상태를 공유하기 위해 App을 루트로 유지
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
   const [roomCode, setRoomCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [isHost, setIsHost] = useState(false);
@@ -88,7 +87,6 @@ function App() {
 
   const navigate = useNavigate();
   const handleSplashComplete = () => {
-    setShowSplash(false);
     navigate('/lobby');
   };
   const handleRoomCreated = (code, hostNickname) => {
