@@ -3,10 +3,106 @@ const Room = require('../models/Room');
 
 const router = express.Router();
 
+// 공개 방 목록 조회 API (검색/필터/정렬/페이지네이션)
+router.get('/', async (req, res) => {
+  try {
+    const {
+      q = '',
+      platform,
+      tags = '',
+      sort = 'active',
+      order = 'desc',
+      page = '1',
+      pageSize = '20',
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const sizeNum = Math.min(50, Math.max(1, parseInt(pageSize, 10) || 20));
+
+    const filter = { visibility: 'public' };
+
+    if (platform && ['youtube', 'spotify'].includes(platform)) {
+      filter.platform = platform;
+    }
+
+    const tagList = (tags || '')
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+    if (tagList.length > 0) {
+      filter.tags = { $all: tagList };
+    }
+
+    if (q && typeof q === 'string') {
+      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [
+        { title: regex },
+        { host: regex },
+        { tags: regex },
+      ];
+    }
+
+    const sortMap = {
+      active: { lastActivityAt: order === 'asc' ? 1 : -1 },
+      created: { createdAt: order === 'asc' ? 1 : -1 },
+      popularity: { participantsCount: order === 'asc' ? 1 : -1 },
+    };
+
+    // participantsCount는 가상 정렬이므로 이후 집계 필요. 기본은 active로.
+    const baseSort = sortMap[sort] || sortMap.active;
+
+    // 집계 파이프라인: participantsCount 계산 및 필요한 필드만 투영
+    const pipeline = [
+      { $match: filter },
+      {
+        $addFields: {
+          participantsCount: { $size: { $ifNull: ['$participants', []] } },
+          titleComputed: { $ifNull: ['$title', { $concat: ['Room ', '$code'] }] },
+        }
+      },
+      { $sort: baseSort },
+      { $skip: (pageNum - 1) * sizeNum },
+      { $limit: sizeNum },
+      {
+        $project: {
+          _id: 0,
+          code: 1,
+          title: '$titleComputed',
+          host: 1,
+          participantsCount: 1,
+          platform: 1,
+          visibility: 1,
+          tags: 1,
+          currentTrack: 1,
+          isPlaying: 1,
+          lastActivityAt: 1,
+          createdAt: 1,
+        }
+      }
+    ];
+
+    const [items, total] = await Promise.all([
+      Room.aggregate(pipeline).exec(),
+      Room.countDocuments(filter)
+    ]);
+
+    res.json({
+      items,
+      page: pageNum,
+      pageSize: sizeNum,
+      total,
+      totalPages: Math.ceil(total / sizeNum)
+    });
+  } catch (error) {
+    console.error('❌ 방 목록 조회 오류:', error);
+    res.status(500).json({ message: '방 목록 조회 중 오류가 발생했습니다.' });
+  }
+});
+
 // 방 생성 API
 router.post('/', async (req, res) => {
   try {
-    const { host } = req.body;
+    const { host, title, platform, visibility, tags } = req.body || {};
     
     // 입력 검증
     if (!host || typeof host !== 'string' || host.trim().length < 2) {
@@ -31,9 +127,14 @@ router.post('/', async (req, res) => {
     
     const room = new Room({
       code,
-      host,
+      host: host.trim(),
+      title: (typeof title === 'string' && title.trim().length > 0) ? title.trim() : undefined,
+      platform: ['youtube', 'spotify'].includes(platform) ? platform : 'youtube',
+      visibility: visibility === 'private' ? 'private' : 'public',
+      tags: Array.isArray(tags) ? tags.filter(t => typeof t === 'string' && t.trim()).slice(0, 10) : [],
       participants: [], // 빈 배열로 시작, 소켓 연결 시에만 추가
-      queue: [] // 큐 기본값 초기화로 push 안전성 확보
+      queue: [], // 큐 기본값 초기화로 push 안전성 확보
+      lastActivityAt: new Date(),
     });
     
     await room.save();
@@ -42,7 +143,9 @@ router.post('/', async (req, res) => {
     res.status(201).json({ 
       roomCode: code, 
       message: '방이 성공적으로 생성되었습니다.',
-      host: host.trim()
+      host: host.trim(),
+      platform: room.platform,
+      visibility: room.visibility
     });
   } catch (error) {
     console.error('❌ 방 생성 오류:', error);

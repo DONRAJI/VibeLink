@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import RoomEntry from './components/RoomEntry/RoomEntry';
 import RoomHeader from './components/RoomHeader/RoomHeader';
@@ -8,6 +9,7 @@ import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
 import MusicSearch from './components/MusicSearch/MusicSearch';
 import ChatWindow from './components/ChatWindow/ChatWindow';
 import './App.css';
+import Lobby from './components/Lobby/Lobby';
 
 const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', {
   reconnection: true,
@@ -17,9 +19,9 @@ const socket = io(process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000', 
   forceNew: true
 });
 
+// 라우팅 내부에서 소켓/상태를 공유하기 위해 App을 루트로 유지
 function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [currentView, setCurrentView] = useState('entry');
   const [roomCode, setRoomCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [isHost, setIsHost] = useState(false);
@@ -84,20 +86,36 @@ function App() {
     };
   }, [nickname]);
 
-  const handleSplashComplete = () => setShowSplash(false);
+  const navigate = useNavigate();
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+    navigate('/lobby');
+  };
   const handleRoomCreated = (code, hostNickname) => {
-    setRoomCode(code); setNickname(hostNickname); setIsHost(true); setCurrentView('room');
+    setRoomCode(code);
+    setNickname(hostNickname);
+    setIsHost(true);
     socket.emit('joinRoom', { roomCode: code, nickname: hostNickname });
+    navigate(`/room/${code}`);
   };
   const handleRoomJoined = (code, userNickname) => {
-    setRoomCode(code); setNickname(userNickname); setIsHost(false); setCurrentView('room');
+    setRoomCode(code);
+    setNickname(userNickname);
+    setIsHost(false);
     socket.emit('joinRoom', { roomCode: code, nickname: userNickname });
+    navigate(`/room/${code}`);
   };
   const handleLeaveRoom = () => {
     socket.emit('disconnect');
-    setCurrentView('entry');
-    setRoomCode(''); setNickname(''); setIsHost(false); setCurrentTrack(null); setIsPlaying(false); setQueue([]); setParticipants([]);
+    setRoomCode('');
+    setNickname('');
+    setIsHost(false);
+    setCurrentTrack(null);
+    setIsPlaying(false);
+    setQueue([]);
+    setParticipants([]);
     setChatMessages([]);
+    navigate('/lobby');
   };
   const handleAddTrack = (track) => socket.emit('addTrack', { roomCode, track, addedBy: nickname });
   const handlePlayPause = () => {
@@ -115,21 +133,32 @@ function App() {
     socket.emit('chatMessage', { roomCode, user: nickname, message: text });
   };
 
-  if (showSplash) return <SplashScreen onComplete={handleSplashComplete} />;
-  if (currentView === 'entry') return <RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />;
-
   return (
-    <div className="app">
-      <div className="app-container">
-        <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
-        <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
-        <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
-        <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} />
-
-  <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
-      </div>
-    </div>
+    <Routes>
+      <Route path="/" element={<SplashScreen onComplete={handleSplashComplete} />} />
+  <Route path="/lobby" element={<Lobby />} />
+      <Route path="/entry" element={<RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />} />
+      <Route path="/room/:code" element={
+        <div className="app">
+          <div className="app-container">
+            <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
+            <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
+            <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
+            <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} />
+            <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
+          </div>
+        </div>
+      } />
+      <Route path="*" element={<Navigate to="/lobby" replace />} />
+    </Routes>
   );
 }
 
-export default App;
+// BrowserRouter 래핑 컴포넌트 (index.js에서 App만 사용 중이므로 내부에서 감쌈)
+export default function RoutedApp() {
+  return (
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  );
+}

@@ -63,6 +63,7 @@ class RoomSocketHandler {
       const participantKey = nickname || socket.id;
       if (!room.participants.includes(participantKey)) {
         room.participants.push(participantKey);
+        room.lastActivityAt = new Date();
         await room.save();
       }
       
@@ -91,7 +92,8 @@ class RoomSocketHandler {
 
       const newTrack = { ...track, addedBy, votes: 0 };
       room.queue.push(newTrack);
-      await room.save();
+  room.lastActivityAt = new Date();
+  await room.save();
       
       console.log(`${code} 방에 '${track.title}' 트랙 추가 요청`);
       this.io.to(code).emit('trackAdded', newTrack);
@@ -133,7 +135,8 @@ class RoomSocketHandler {
         }
       }
       
-      await room.save();
+  room.lastActivityAt = new Date();
+  await room.save();
       
       console.log(`${code} 방에 '${action}' 컨트롤 요청`);
       this.io.to(code).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
@@ -189,6 +192,7 @@ class RoomSocketHandler {
 
         // 투표 수에 따라 큐 정렬
         room.queue.sort((a, b) => b.votes - a.votes);
+        room.lastActivityAt = new Date();
         await room.save();
 
         this.io.to(code).emit('queueUpdated', room.queue);
@@ -216,7 +220,8 @@ class RoomSocketHandler {
       if (room.chatMessages.length > 500) {
         room.chatMessages = room.chatMessages.slice(-500);
       }
-      await room.save();
+  room.lastActivityAt = new Date();
+  await room.save();
 
       this.io.to(code).emit('newChatMessage', entry);
     } catch (error) {
@@ -231,6 +236,7 @@ class RoomSocketHandler {
         if (room) {
           const removeKey = socket.userName || socket.userId;
           room.participants = room.participants.filter(p => p !== removeKey);
+          room.lastActivityAt = new Date();
           await room.save();
           this.io.to(socket.roomCode).emit('participantsUpdated', room.participants);
         }
