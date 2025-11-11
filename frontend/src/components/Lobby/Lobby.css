@@ -1,12 +1,20 @@
 .lobby { padding: 16px; }
-.lobby-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.lobby-header h2 { margin: 0; }
-.actions .primary { background: #5a72dd; color: #fff; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
-.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-.filters input { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #d6dae0; background: #fff; color: #222; }
-.filters select, .filters button { padding: 10px 12px; border-radius: 8px; border: 1px solid #d6dae0; background: #fff; color: #222; }
+.lobby-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.lobby-header h2 { margin: 0; font-size: 20px; }
+.actions .primary { background: #5a72dd; color: #fff; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.actions .primary:hover { background: #4a61c0; }
+.filters { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+.filters input { flex: 1 1 220px; padding: 10px 12px; border-radius: 8px; border: 1px solid #d6dae0; background: #fff; color: #222; }
+.filters select { padding: 10px 12px; border-radius: 8px; border: 1px solid #d6dae0; background: #fff; color: #222; }
+.filters button[type=submit] { padding: 10px 16px; border-radius: 8px; border: 1px solid #5a72dd; background: #5a72dd; color:#fff; font-weight:600; cursor:pointer; }
+.filters button[type=submit]:hover { background:#4a61c0; }
+.platform-toggles { display:flex; gap:4px; }
+.platform-toggles button { padding:8px 12px; border:1px solid #d6dae0; background:#f7f9fb; color:#333; border-radius:20px; cursor:pointer; font-size:13px; }
+.platform-toggles button.active { background:#5a72dd; color:#fff; border-color:#5a72dd; font-weight:600; }
+.platform-toggles button:hover:not(.active) { background:#e9eef3; }
+.summary-bar { margin: 4px 0 12px; font-size:13px; color:#555; display:flex; justify-content:flex-end; }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .footer { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; }
 @media (max-width: 1200px) { .grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px) { .grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .filters { flex-wrap: wrap; } }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .filters { flex-wrap: wrap; } .summary-bar { justify-content:flex-start; } }

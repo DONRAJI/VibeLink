@@ -5,10 +5,10 @@ import './MusicSearch.css';
 // 백엔드 URL 환경변수
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
-const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
+const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [platform, setPlatform] = useState('youtube'); // 'youtube' | 'spotify'
+  const [platform, setPlatform] = useState(forcedPlatform || 'youtube'); // 'youtube' | 'spotify'
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSearchTime, setLastSearchTime] = useState(0);
@@ -96,6 +96,13 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
     }
   }, [onAddTrack, platform]);
 
+  // forcedPlatform 변경 시 내부 state 동기화
+  React.useEffect(() => {
+    if (forcedPlatform && forcedPlatform !== platform) {
+      setPlatform(forcedPlatform);
+    }
+  }, [forcedPlatform]);
+
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       handleSearch();
@@ -131,16 +138,18 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
               '🔍 검색'
             )}
           </button>
-          <select
-            value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
-            className="platform-select"
-            disabled={!currentRoom || isLoading}
-            title="검색 플랫폼 선택"
-          >
-            <option value="youtube">YouTube</option>
-            <option value="spotify">Spotify</option>
-          </select>
+          {!forcedPlatform && (
+            <select
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value)}
+              className="platform-select"
+              disabled={!currentRoom || isLoading}
+              title="검색 플랫폼 선택"
+            >
+              <option value="youtube">YouTube</option>
+              <option value="spotify">Spotify</option>
+            </select>
+          )}
         </div>
         
         {!currentRoom && (
@@ -161,7 +170,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname }) => {
           <h4>검색 결과 ({searchResults.length})</h4>
           <div className="results-list">
             {searchResults.map((track) => (
-              <div key={track.videoId} className="result-item">
+              <div key={track.videoId || track.id} className="result-item">
                 <div className="result-thumbnail">
                   <img 
                     src={track.thumbnailUrl} 

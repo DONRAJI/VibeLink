@@ -19,7 +19,7 @@ export default function RoomCard({ room, onEnter }) {
   return (
     <div className="room-card" onClick={() => onEnter(code)} role="button">
       <div className="room-card-header">
-        <span className={`badge platform ${platform}`}>{platformLabel(platform)}</span>
+          <span className={`badge platform ${platform}`}>{platform === 'spotify' ? 'Spotify' : 'YouTube'}</span>
         <span className="badge count">👥 {participantsCount || 0}</span>
       </div>
       <div className="room-title">{title}</div>

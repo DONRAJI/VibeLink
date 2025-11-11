@@ -29,6 +29,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
+  const [roomPlatform, setRoomPlatform] = useState('youtube');
 
   useEffect(() => {
     socket.on('connect', () => console.log('✅ 서버 연결:', socket.id));
@@ -42,6 +43,7 @@ function App() {
       setParticipants(room.participants || []);
       setIsHost(room.host === nickname);
       setChatMessages([]);
+      if (room.platform) setRoomPlatform(room.platform);
     });
 
     socket.on('roomError', (err) => alert(err.message));
@@ -72,7 +74,7 @@ function App() {
 
     return () => {
       socket.off('connect');
-      socket.off('disconnect');
+      socket.off('disconnect'); 
       socket.off('connect_error');
       socket.off('roomJoined');
       socket.off('roomError');
@@ -142,7 +144,7 @@ function App() {
             <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
             <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
             <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
-            <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} />
+            <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} forcedPlatform={roomPlatform} />
             <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
           </div>
         </div>

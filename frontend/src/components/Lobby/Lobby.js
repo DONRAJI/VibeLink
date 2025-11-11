@@ -14,6 +14,7 @@ export default function Lobby() {
   const [q, setQ] = useState('');
   const [platform, setPlatform] = useState('all');
   const [sort, setSort] = useState('active');
+  const [totalPages, setTotalPages] = useState(1);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -34,15 +35,16 @@ export default function Lobby() {
         const res = await fetch(`${API_BASE}/api/rooms?${queryString}`);
         const data = await res.json();
         if (cancelled) return;
-        if (!Array.isArray(data)) {
-          setHasMore(false);
-          return;
-        }
-        if (page === 1) setRooms(data);
-        else setRooms((prev) => [...prev, ...data]);
-        setHasMore(data.length === 24);
+        // 새로운 응답 형태: { items, page, pageSize, total, totalPages }
+        const list = Array.isArray(data.items) ? data.items : [];
+        if (page === 1) setRooms(list);
+        else setRooms(prev => [...prev, ...list]);
+        setTotalPages(data.totalPages || 1);
+        setHasMore(page < (data.totalPages || 1) && list.length > 0);
       } catch (e) {
         console.error('Failed to fetch rooms', e);
+        if (page === 1) setRooms([]);
+        setHasMore(false);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -57,7 +59,7 @@ export default function Lobby() {
   };
 
   const onEnterRoom = (code) => {
-    // 향후: query param으로 code를 넘겨 RoomEntry에서 자동 입력 가능
+    // 향후 개선: 엔트리 페이지로 이동 시 code 전달 (e.g. navigate(`/entry?code=${code}`))
     navigate('/entry');
   };
 
@@ -77,11 +79,20 @@ export default function Lobby() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <select value={platform} onChange={(e) => { setPlatform(e.target.value); setPage(1); }}>
-          <option value="all">전체 플랫폼</option>
-          <option value="youtube">YouTube</option>
-          <option value="spotify">Spotify</option>
-        </select>
+        <div className="platform-toggles" role="group" aria-label="플랫폼 필터">
+          {[
+            { val: 'all', label: '전체' },
+            { val: 'youtube', label: 'YouTube' },
+            { val: 'spotify', label: 'Spotify' }
+          ].map(p => (
+            <button
+              key={p.val}
+              type="button"
+              className={p.val === platform ? 'active' : ''}
+              onClick={() => { setPlatform(p.val); setPage(1); }}
+            >{p.label}</button>
+          ))}
+        </div>
         <select value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
           <option value="active">최근 활동순</option>
           <option value="created">최신 생성순</option>
@@ -90,8 +101,11 @@ export default function Lobby() {
         <button type="submit">검색</button>
       </form>
 
+      <div className="summary-bar">
+        <span>총 {rooms.length}개 표시 (페이지 {page}/{totalPages})</span>
+      </div>
       <div className="grid">
-        {rooms.map((room) => (
+        {rooms.map(room => (
           <RoomCard key={room.code} room={room} onEnter={onEnterRoom} />
         ))}
       </div>
@@ -99,7 +113,7 @@ export default function Lobby() {
       <div className="footer">
         {loading && <span>불러오는 중...</span>}
         {!loading && hasMore && (
-          <button onClick={() => setPage((p) => p + 1)}>더 보기</button>
+          <button onClick={() => setPage(p => p + 1)}>더 보기</button>
         )}
         {!loading && !hasMore && rooms.length > 0 && <span>마지막 페이지입니다</span>}
         {!loading && rooms.length === 0 && <span>표시할 공개 방이 없습니다</span>}
