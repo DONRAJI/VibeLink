@@ -175,7 +175,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       }
     };
     doPlayIfNeeded();
-  }, [currentTrack, isPlaying, isHost, player]);
+  }, [currentTrack, isPlaying, isHost, player, transferToDevice]);
 
   // 사용자 제스처로 오디오 컨텍스트 활성화 (브라우저 자동재생 제한 대응)
   const activateAudio = async () => {
