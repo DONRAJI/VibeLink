@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 // 백엔드 URL 환경변수
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
@@ -30,15 +30,15 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     }
   }
 
-  async function fetchPlaybackToken(userId) {
+  const fetchPlaybackToken = useCallback(async (userId) => {
     const resp = await fetch(`${API_BASE_URL}/api/spotify/playback/${userId}`);
     if (!resp.ok) throw new Error('토큰을 가져오지 못했습니다');
     const data = await resp.json();
     return data.accessToken;
-  }
+  }, []);
 
   // 장치 활성 전환(Transfer Playback)
-  async function transferToDevice(userId) {
+  const transferToDevice = useCallback(async (userId) => {
     if (!deviceIdRef.current) return;
     const token = await fetchPlaybackToken(userId);
     await fetch('https://api.spotify.com/v1/me/player', {
@@ -46,7 +46,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ device_ids: [deviceIdRef.current], play: false })
     });
-  }
+  }, [fetchPlaybackToken]);
 
   // SDK 스크립트 로드
   useEffect(() => {
