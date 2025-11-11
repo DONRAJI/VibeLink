@@ -35,25 +35,32 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
   // SDK 스크립트 로드
   useEffect(() => {
+    // onSpotifyWebPlaybackSDKReady를 미리 정의해 AnthemError 방지
+    window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+
     if (window.Spotify) {
+      // 이미 로드됨
       setSdkReady(true);
       return;
     }
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
-    script.onload = () => {
-      window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+    script.onerror = () => {
+      console.error('Spotify Web Playback SDK 로드 실패');
     };
     document.body.appendChild(script);
+
     return () => {
-      // cleanup는 필요시 추가
+      // 언마운트 시 콜백 제거(다른 페이지에서 재정의될 수 있음)
+      try { delete window.onSpotifyWebPlaybackSDKReady; } catch {}
     };
   }, []);
 
   // 플레이어 초기화 (방장일 때만 실제 플레이어 구성)
   useEffect(() => {
     if (!sdkReady || player || !isHost) return;
+    console.log('[SpotifyPlayer] Initializing player... (sdkReady=', sdkReady, ', isHost=', isHost, ')');
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
 
@@ -73,19 +80,21 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       });
 
       spotifyPlayer.addListener('ready', ({ device_id }) => {
-        console.log('Spotify Player Ready, device_id=', device_id);
+        console.log('[SpotifyPlayer] Ready device_id=', device_id);
         deviceIdRef.current = device_id;
       });
       spotifyPlayer.addListener('not_ready', ({ device_id }) => {
-        console.warn('Spotify Player Not Ready:', device_id);
+        console.warn('[SpotifyPlayer] Not Ready device=', device_id);
       });
-      spotifyPlayer.addListener('initialization_error', ({ message }) => console.error('init error', message));
-      spotifyPlayer.addListener('authentication_error', ({ message }) => console.error('auth error', message));
-      spotifyPlayer.addListener('account_error', ({ message }) => console.error('account error', message));
+      spotifyPlayer.addListener('initialization_error', ({ message }) => console.error('[SpotifyPlayer] init error', message));
+      spotifyPlayer.addListener('authentication_error', ({ message }) => console.error('[SpotifyPlayer] auth error', message));
+      spotifyPlayer.addListener('account_error', ({ message }) => console.error('[SpotifyPlayer] account error', message));
 
       // 트랙 종료 감지(간이): 이전 트랙과 비교해 위치 0, paused 상태 등 조건으로 판별
       spotifyPlayer.addListener('player_state_changed', (state) => {
         if (!state) return;
+        // 상태 덤프 (디버깅 필요시 주석 해제)
+        // console.log('[SpotifyPlayer] state change', state);
         const prev = state.track_window?.previous_tracks?.[0];
         const paused = state.paused;
         // 종료 추정 로직: 이전 트랙 ID와 lastTrackIdRef 비교 + 위치 0 + paused
@@ -95,6 +104,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       });
 
       const connected = await spotifyPlayer.connect();
+      console.log('[SpotifyPlayer] connect() ->', connected);
       if (connected) setPlayer(spotifyPlayer);
     };
 
@@ -125,6 +135,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           lastTrackIdRef.current = currentTrack.id;
           try {
             const token = await fetchPlaybackToken(user.userId);
+            console.log('[SpotifyPlayer] PUT play track', currentTrack.id, 'device=', deviceIdRef.current);
             await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
               method: 'PUT',
               headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -136,7 +147,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         } else {
           // 재생/일시정지 토글
           try {
-            if (isPlaying) await player.resume(); else await player.pause();
+            if (isPlaying) { console.log('[SpotifyPlayer] resume()'); await player.resume(); }
+            else { console.log('[SpotifyPlayer] pause()'); await player.pause(); }
           } catch (e) {
             console.error('재생/일시정지 실패:', e);
           }
