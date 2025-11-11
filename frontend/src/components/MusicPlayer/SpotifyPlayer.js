@@ -15,6 +15,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const [player, setPlayer] = useState(null);
   const deviceIdRef = useRef(null);
   const lastTrackIdRef = useRef(null);
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(0);
+  const [volume, setVolume] = useState(80); // 0~100
+  const [audioActivated, setAudioActivated] = useState(false);
 
   // 로컬에 저장된 스포티파이 사용자 정보 로드
   function getStoredSpotifyUser() {
@@ -31,6 +35,17 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     if (!resp.ok) throw new Error('토큰을 가져오지 못했습니다');
     const data = await resp.json();
     return data.accessToken;
+  }
+
+  // 장치 활성 전환(Transfer Playback)
+  async function transferToDevice(userId) {
+    if (!deviceIdRef.current) return;
+    const token = await fetchPlaybackToken(userId);
+    await fetch('https://api.spotify.com/v1/me/player', {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_ids: [deviceIdRef.current], play: false })
+    });
   }
 
   // SDK 스크립트 로드
@@ -57,7 +72,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
   }, []);
 
-  // 플레이어 초기화 (방장일 때만 실제 플레이어 구성)
   useEffect(() => {
     if (!sdkReady || player || !isHost) return;
     console.log('[SpotifyPlayer] Initializing player... (sdkReady=', sdkReady, ', isHost=', isHost, ')');
@@ -97,6 +111,9 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         // console.log('[SpotifyPlayer] state change', state);
         const prev = state.track_window?.previous_tracks?.[0];
         const paused = state.paused;
+        setPositionMs(state.position || 0);
+        const dur = state.duration || state.track_window?.current_track?.duration_ms || 0;
+        setDurationMs(dur);
         // 종료 추정 로직: 이전 트랙 ID와 lastTrackIdRef 비교 + 위치 0 + paused
         if (paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
           endedRef.current && endedRef.current();
@@ -136,6 +153,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           try {
             const token = await fetchPlaybackToken(user.userId);
             console.log('[SpotifyPlayer] PUT play track', currentTrack.id, 'device=', deviceIdRef.current);
+            // 활성 디바이스 전환 보장
+            await transferToDevice(user.userId);
             await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
               method: 'PUT',
               headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -158,14 +177,91 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     doPlayIfNeeded();
   }, [currentTrack, isPlaying, isHost, player]);
 
-  // 렌더링: Spotify는 시각 영상이 없으므로 간단한 표시만
+  // 사용자 제스처로 오디오 컨텍스트 활성화 (브라우저 자동재생 제한 대응)
+  const activateAudio = async () => {
+    try {
+      if (player && player.activateElement) {
+        await player.activateElement();
+        setAudioActivated(true);
+      } else {
+        setAudioActivated(true);
+      }
+    } catch (e) {
+      console.warn('오디오 활성화 실패:', e);
+    }
+  };
+
+  // 볼륨 변경
+  const handleVolume = async (e) => {
+    const v = Number(e.target.value);
+    setVolume(v);
+    try {
+      if (player) await player.setVolume(Math.min(1, Math.max(0, v / 100)));
+    } catch (err) {
+      console.error('볼륨 설정 실패:', err);
+    }
+  };
+
+  // 시크(원하는 위치로 건너뛰기)
+  const handleSeek = async (e) => {
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return;
+    const newPos = Number(e.target.value);
+    setPositionMs(newPos);
+    try {
+      const token = await fetchPlaybackToken(user.userId);
+      await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPos}&device_id=${deviceIdRef.current}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.error('시크 실패:', err);
+    }
+  };
+
+  const fmt = (ms) => {
+    const sec = Math.floor(ms / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2,'0')}`;
+  };
+
+  const art = currentTrack?.thumbnailUrl;
+
   return (
-    <div className="player-container">
-      <div className="video-container" style={{ background:'#121212', color:'#fff', display:'flex', alignItems:'center', justifyContent:'center', height:0, paddingBottom:'30%', borderRadius:8 }}>
-        <div style={{ textAlign:'center' }}>
-          <div style={{ fontSize:24, marginBottom:8 }}>Spotify 플레이어</div>
-          <div style={{ fontSize:14, opacity:0.8 }}>{isHost ? '방장 디바이스에서 재생 중' : '재생 상태 동기화 중'}</div>
+    <div className="player-container" style={{ padding: '8px 0' }}>
+      <div className="video-container" style={{ background:'#f2d9db', display:'flex', alignItems:'center', justifyContent:'center', height:0, paddingBottom:'30%', borderRadius:12, position:'relative' }}>
+        {/* 상단 바 */}
+        <div style={{ position:'absolute', top:12, left:12, right:12, background:'#d9c0c2', borderRadius:12, padding:'10px 14px', display:'flex', alignItems:'center', gap:12 }}>
+          <img src={art} alt="art" style={{ width:48, height:48, borderRadius:'50%', objectFit:'cover' }} onError={(e)=>{e.target.style.display='none';}} />
+          <div style={{ flex:1 }}>
+            <div style={{ fontWeight:700 }}>{currentTrack?.title || '재생 준비'}</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <input type="range" min={0} max={durationMs || 0} value={Math.min(positionMs, durationMs || 0)} onChange={handleSeek} style={{ width:'100%' }} disabled={!isHost || !durationMs} />
+              <div style={{ fontSize:12, color:'#333' }}>{fmt(positionMs)} / {fmt(durationMs)}</div>
+            </div>
+          </div>
         </div>
+
+        {/* 하단 컨트롤 */}
+        <div style={{ position:'absolute', bottom:14, left:24, right:24, background:'#fff', borderRadius:12, padding:'16px 20px', boxShadow:'0 10px 20px rgba(0,0,0,0.12)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ width:64 }} />
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <button className="control-btn" onClick={()=>{ /* 이전은 미지원 -> 0으로 시크 */ setPositionMs(0); handleSeek({ target:{ value:0 } }); }} disabled={!isHost}>⏮️</button>
+            <button className={`control-btn ${isPlaying ? 'playing':''}`} onClick={()=>{ activateAudio(); onPlayPause(); }} disabled={!isHost}>{isPlaying ? '⏸️' : '▶️'}</button>
+            <button className="control-btn" onClick={onNext} disabled={!isHost}>⏭️</button>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span>🔊</span>
+            <input type="range" min={0} max={100} value={volume} onChange={handleVolume} style={{ width:120 }} disabled={!isHost} />
+          </div>
+        </div>
+
+        {!audioActivated && isHost && (
+          <button onClick={activateAudio} style={{ position:'absolute', inset:0, background:'transparent', border:'none', cursor:'pointer' }} title="오디오 활성화">
+            {/* 클릭 영역 전체를 활성화 버튼으로 */}
+          </button>
+        )}
       </div>
     </div>
   );
