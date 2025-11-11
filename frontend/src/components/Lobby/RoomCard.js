@@ -1,6 +1,7 @@
 import React from 'react';
 import './RoomCardStyles.css';
 
+// 플랫폼 라벨 유틸 (ESLint 경고 제거 위해 실제 사용)
 const platformLabel = (p) => p === 'spotify' ? 'Spotify' : 'YouTube';
 
 export default function RoomCard({ room, onEnter }) {
@@ -19,7 +20,7 @@ export default function RoomCard({ room, onEnter }) {
   return (
     <div className="room-card" onClick={() => onEnter(code)} role="button">
       <div className="room-card-header">
-          <span className={`badge platform ${platform}`}>{platform === 'spotify' ? 'Spotify' : 'YouTube'}</span>
+          <span className={`badge platform ${platform}`}>{platformLabel(platform)}</span>
         <span className="badge count">👥 {participantsCount || 0}</span>
       </div>
       <div className="room-title">{title}</div>

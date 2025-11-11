@@ -101,7 +101,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     if (forcedPlatform && forcedPlatform !== platform) {
       setPlatform(forcedPlatform);
     }
-  }, [forcedPlatform]);
+  }, [forcedPlatform, platform]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
