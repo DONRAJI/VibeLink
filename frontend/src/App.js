@@ -37,7 +37,10 @@ function App() {
     socket.on('connect_error', (e) => console.error('🔌 연결 오류:', e));
 
     socket.on('roomJoined', (room) => {
-      setCurrentTrack(room.currentTrack && room.currentTrack.videoId ? room.currentTrack : null);
+      // 현재 트랙 설정: YouTube(videoId) 또는 Spotify(id/platform)
+      const ct = room.currentTrack;
+      const normalized = ct && (ct.videoId || ct.id || ct.platform === 'spotify') ? ct : null;
+      setCurrentTrack(normalized);
       setIsPlaying(room.isPlaying);
       setQueue(room.queue || []);
       setParticipants(room.participants || []);
@@ -50,21 +53,23 @@ function App() {
     socket.on('trackAdded', (track) => setQueue(prev => [...prev, track]));
     socket.on('queueUpdated', (newQueue) => setQueue(newQueue));
     socket.on('playbackControlled', ({ action, track, isPlaying: newIsPlaying }) => {
+      // 콘솔 진단
+      console.log('🎧 playbackControlled:', action, track?.platform, track?.videoId || track?.id);
       if (action === 'play' && track) {
-        setCurrentTrack(track && track.videoId ? track : null);
+        setCurrentTrack(track);
         setIsPlaying(true);
       } else if (action === 'pause') {
         setIsPlaying(false);
       } else if (action === 'next') {
         if (track) {
-          setCurrentTrack(track && track.videoId ? track : null);
+          setCurrentTrack(track);
           setIsPlaying(true);
         } else {
           setCurrentTrack(null);
           setIsPlaying(false);
         }
       }
-      setIsPlaying(newIsPlaying);
+      if (typeof newIsPlaying === 'boolean') setIsPlaying(newIsPlaying);
     });
     socket.on('participantsUpdated', (p) => setParticipants(p));
 
