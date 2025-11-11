@@ -6,9 +6,22 @@ const router = express.Router();
 
 // In-memory store (simple prototype; replace with DB in production)
 const userTokens = new Map(); // key: Spotify user id, value: { accessToken, refreshToken, expiresAt, profile }
+const pendingStates = new Map(); // key: state, value: expiresAt (ms)
 
-function getRedirectUri() {
-  return process.env.SPOTIFY_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/spotify/callback`; // fallback
+function pruneStates() {
+  const now = Date.now();
+  for (const [state, exp] of pendingStates) {
+    if (exp <= now) pendingStates.delete(state);
+  }
+}
+
+function getBackendBase(req) {
+  return process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+}
+
+function getRedirectUri(req) {
+  // Prefer explicit env; otherwise default to backend callback URL
+  return process.env.SPOTIFY_REDIRECT_URI || `${getBackendBase(req)}/api/spotify/callback`;
 }
 
 router.get('/login', (req, res) => {
@@ -19,7 +32,10 @@ router.get('/login', (req, res) => {
     'user-read-email',
     'user-read-private'
   ].join(' ');
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri(req);
+  // store state (5 minutes TTL)
+  pruneStates();
+  pendingStates.set(state, Date.now() + 5 * 60 * 1000);
   const authUrl = 'https://accounts.spotify.com/authorize' +
     `?response_type=code&client_id=${encodeURIComponent(clientId)}` +
     `&scope=${encodeURIComponent(scope)}` +
@@ -29,12 +45,17 @@ router.get('/login', (req, res) => {
 });
 
 router.get('/callback', async (req, res) => {
-  const { code } = req.query;
+  const { code, state } = req.query;
   if (!code) return res.status(400).send('code가 없습니다.');
+  pruneStates();
+  if (!state || !pendingStates.has(state)) {
+    return res.status(400).send('invalid state');
+  }
+  pendingStates.delete(state);
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) return res.status(500).send('Spotify Client ID/Secret 미설정');
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri(req);
 
   const params = new URLSearchParams();
   params.append('grant_type', 'authorization_code');
