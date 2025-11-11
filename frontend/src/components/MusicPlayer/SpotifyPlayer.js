@@ -86,12 +86,11 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       // 트랙 종료 감지(간이): 이전 트랙과 비교해 위치 0, paused 상태 등 조건으로 판별
       spotifyPlayer.addListener('player_state_changed', (state) => {
         if (!state) return;
-        const current = state.track_window?.current_track;
         const prev = state.track_window?.previous_tracks?.[0];
         const paused = state.paused;
+        // 종료 추정 로직: 이전 트랙 ID와 lastTrackIdRef 비교 + 위치 0 + paused
         if (paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
-          // 이전 트랙이 끝난 것으로 추정
-          onEnded && onEnded();
+          endedRef.current && endedRef.current();
         }
       });
 
@@ -109,6 +108,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   }, [sdkReady, player, isHost]);
 
   // 트랙/재생 상태 변경 시 제어 (방장만)
+  // 최신 onEnded 유지 (exhaustive-deps 회피를 위한 ref)
+  const endedRef = useRef(onEnded);
+  useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
+
   useEffect(() => {
     const doPlayIfNeeded = async () => {
       if (!isHost) return;
