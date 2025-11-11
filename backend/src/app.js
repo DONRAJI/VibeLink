@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
@@ -8,6 +9,7 @@ const { Server } = require("socket.io");
 // 라우터 임포트
 const roomRoutes = require('./api/roomRoutes');
 const searchRoutes = require('./api/searchRoutes');
+const spotifyAuthRoutes = require('./api/spotifyAuthRoutes');
 
 // 소켓 핸들러 및 서비스 임포트
 const RoomSocketHandler = require('./sockets/roomSocketHandler');
@@ -56,8 +58,9 @@ app.use(cors(corsOptions));
 // --- [CORS 설정 수정 끝] ---
 
 
-// JSON 파싱 제한 (님의 기존 코드 유지)
+// JSON 파싱 + 쿠키 파싱
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
 // 요청 로깅 (님의 기존 코드 유지)
 app.use((req, res, next) => {
@@ -120,6 +123,7 @@ app.get('/debug/rooms', async (req, res) => {
 // API 라우터 등록 (님의 기존 코드 유지)
 app.use('/api/rooms', roomRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/spotify', spotifyAuthRoutes);
 
 // WebSocket 이벤트 핸들러 초기화 (님의 기존 코드 유지)
 const youtubeService = new YouTubeService(process.env.YOUTUBE_API_KEY);
@@ -131,4 +135,8 @@ io.on('connection', (socket) => {
 // 서버 실행 (님의 기존 코드 유지)
 server.listen(port, () => {
   console.log(` VibeLink 서버가 http://localhost:${port} 에서 실행 중입니다. `);
+  // Masked env presence logs (for debugging only; no secrets printed)
+  const idLen = (process.env.SPOTIFY_CLIENT_ID || '').length;
+  const secLen = (process.env.SPOTIFY_CLIENT_SECRET || '').length;
+  console.log(`[env] Spotify CLIENT_ID set: ${idLen > 0} (len=${idLen}), SECRET set: ${secLen > 0} (len=${secLen})`);
 });

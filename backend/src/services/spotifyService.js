@@ -18,6 +18,7 @@ class SpotifyService {
   async getAppToken() {
     const now = Date.now();
     if (this.token && now < this.tokenExpiresAt - 30_000) {
+      console.log('[spotify] using cached app token');
       return this.token;
     }
 
@@ -29,16 +30,24 @@ class SpotifyService {
     const params = new URLSearchParams();
     params.append('grant_type', 'client_credentials');
 
-    const resp = await axios.post('https://accounts.spotify.com/api/token', params, {
-      headers: {
-        'Authorization': `Basic ${authHeader}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
-    });
+    console.log('[spotify] requesting new app token');
+    let resp;
+    try {
+      resp = await axios.post('https://accounts.spotify.com/api/token', params, {
+        headers: {
+          'Authorization': `Basic ${authHeader}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+    } catch (e) {
+      console.error('[spotify] token request failed', e.response?.status, e.response?.data || e.message);
+      throw e;
+    }
 
     this.token = resp.data.access_token;
     // expires_in is seconds
     this.tokenExpiresAt = Date.now() + (resp.data.expires_in || 3600) * 1000;
+    console.log('[spotify] app token acquired, expires in', resp.data.expires_in, 'seconds');
     return this.token;
   }
 
@@ -51,10 +60,17 @@ class SpotifyService {
     if (!query) throw new Error('검색어를 입력해주세요.');
     const token = await this.getAppToken();
 
-    const resp = await axios.get('https://api.spotify.com/v1/search', {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { q: query, type: 'track', limit }
-    });
+    console.log('[spotify] searching tracks q=', query);
+    let resp;
+    try {
+      resp = await axios.get('https://api.spotify.com/v1/search', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { q: query, type: 'track', limit }
+      });
+    } catch (e) {
+      console.error('[spotify] search failed', e.response?.status, e.response?.data || e.message);
+      throw e;
+    }
 
     const items = (resp.data?.tracks?.items || []).map(track => ({
       id: track.id,
@@ -69,6 +85,22 @@ class SpotifyService {
     }));
 
     return items;
+  }
+
+  /**
+   * Fetch user profile with a user access token (OAuth) to check premium status.
+   */
+  async getUserProfile(accessToken) {
+    if (!accessToken) throw new Error('accessToken이 필요합니다.');
+    try {
+      const resp = await axios.get('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      return resp.data; // contains product: 'premium' | 'free'
+    } catch (e) {
+      console.error('[spotify] user profile failed', e.response?.status, e.response?.data || e.message);
+      throw e;
+    }
   }
 }
 

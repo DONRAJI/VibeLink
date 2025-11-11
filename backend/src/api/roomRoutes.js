@@ -102,7 +102,7 @@ router.get('/', async (req, res) => {
 // 방 생성 API
 router.post('/', async (req, res) => {
   try {
-    const { host, title, platform, visibility, tags } = req.body || {};
+    const { host, title, platform, visibility, tags, userId } = req.body || {};
     
     // 입력 검증
     if (!host || typeof host !== 'string' || host.trim().length < 2) {
@@ -125,11 +125,26 @@ router.post('/', async (req, res) => {
       }
     } while (await Room.findOne({ code }));
     
+    // Spotify 프리미엄 방 생성 제한
+    const selectedPlatform = ['youtube', 'spotify'].includes(platform) ? platform : 'youtube';
+    if (selectedPlatform === 'spotify') {
+      // 간단한 프리미엄 검증 요청 (OAuth 완료된 사용자)
+      if (!userId) {
+        return res.status(403).json({ message: 'Spotify 프리미엄 방을 생성하려면 먼저 Spotify 인증이 필요합니다.' });
+      }
+      // 임시 메모리 저장소 접근 (auth 라우터에서 설정됨)
+      const { userTokens } = require('./spotifyAuthRoutes');
+      const tokenInfo = userTokens.get(userId);
+      if (!tokenInfo || tokenInfo.profile?.product !== 'premium') {
+        return res.status(403).json({ message: 'Spotify 프리미엄 사용자만 Spotify 방을 생성할 수 있습니다.' });
+      }
+    }
+
     const room = new Room({
       code,
       host: host.trim(),
       title: (typeof title === 'string' && title.trim().length > 0) ? title.trim() : undefined,
-      platform: ['youtube', 'spotify'].includes(platform) ? platform : 'youtube',
+      platform: selectedPlatform,
       visibility: visibility === 'private' ? 'private' : 'public',
       tags: Array.isArray(tags) ? tags.filter(t => typeof t === 'string' && t.trim()).slice(0, 10) : [],
       participants: [], // 빈 배열로 시작, 소켓 연결 시에만 추가
@@ -172,6 +187,15 @@ router.get('/:code', async (req, res) => {
     if (!room) {
       console.log(`❌ 존재하지 않는 방 코드: ${code}`);
       return res.status(404).json({ message: '존재하지 않는 방 코드입니다.' });
+    }
+    // Spotify 방 참가 제한
+    if (room.platform === 'spotify') {
+      const { userId } = req.query;
+      const { userTokens } = require('./spotifyAuthRoutes');
+      const info = userId ? userTokens.get(userId) : null;
+      if (!info || info.profile?.product !== 'premium') {
+        return res.status(403).json({ message: 'Spotify 프리미엄 사용자만 이 방에 참가할 수 있습니다.' });
+      }
     }
     
     console.log(`✅ 방 정보 조회: ${code} (참가자: ${room.participants.length}명)`);
