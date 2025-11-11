@@ -132,7 +132,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         spotifyPlayer.disconnect();
       }
     };
-  }, [sdkReady, player, isHost]);
+  }, [sdkReady, player, isHost, fetchPlaybackToken]);
 
   // 트랙/재생 상태 변경 시 제어 (방장만)
   // 최신 onEnded 유지 (exhaustive-deps 회피를 위한 ref)
@@ -175,7 +175,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       }
     };
     doPlayIfNeeded();
-  }, [currentTrack, isPlaying, isHost, player, transferToDevice]);
+  }, [currentTrack, isPlaying, isHost, player, transferToDevice, fetchPlaybackToken]);
 
   // 사용자 제스처로 오디오 컨텍스트 활성화 (브라우저 자동재생 제한 대응)
   const activateAudio = async () => {
