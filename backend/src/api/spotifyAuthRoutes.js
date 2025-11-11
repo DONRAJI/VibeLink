@@ -16,7 +16,19 @@ function pruneStates() {
 }
 
 function getBackendBase(req) {
-  return process.env.BACKEND_URL || `${req.protocol}://${req.get('host')}`;
+  // Trim and strip surrounding quotes if accidentally included
+  let envBase = (process.env.BACKEND_URL || '').trim();
+  if (envBase.startsWith('"') && envBase.endsWith('"')) {
+    envBase = envBase.slice(1, -1);
+  }
+  if (envBase) {
+    return envBase.replace(/\/$/, '');
+  }
+  const host = req.get('host');
+  // Behind proxies req.protocol may be 'http'; enforce https for common managed hosts
+  const forceHttps = /onrender\.com$/.test(host) || /vercel\.app$/.test(host);
+  const proto = forceHttps ? 'https' : req.protocol;
+  return `${proto}://${host}`;
 }
 
 function getRedirectUri(req) {
@@ -33,6 +45,7 @@ router.get('/login', (req, res) => {
     'user-read-private'
   ].join(' ');
   const redirectUri = getRedirectUri(req);
+  console.log('[spotify-oauth] computed redirectUri (login):', redirectUri);
   // store state (5 minutes TTL)
   pruneStates();
   pendingStates.set(state, Date.now() + 5 * 60 * 1000);
@@ -56,6 +69,7 @@ router.get('/callback', async (req, res) => {
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) return res.status(500).send('Spotify Client ID/Secret 미설정');
   const redirectUri = getRedirectUri(req);
+  console.log('[spotify-oauth] computed redirectUri (callback):', redirectUri);
 
   const params = new URLSearchParams();
   params.append('grant_type', 'authorization_code');
