@@ -23,7 +23,9 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
       const w = window.open(authUrl, 'spotify_oauth', 'width=500,height=700');
       const handler = (e) => {
         if (e.data?.type === 'SPOTIFY_AUTH') {
-          setSpotifyUser({ userId: e.data.userId, product: e.data.product });
+          const info = { userId: e.data.userId, product: e.data.product };
+          setSpotifyUser(info);
+          try { localStorage.setItem('spotifyUser', JSON.stringify(info)); } catch {}
           window.removeEventListener('message', handler);
           w && w.close();
         }

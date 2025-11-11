@@ -74,17 +74,13 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
       if (platform === 'youtube') {
         onAddTrack(track);
       } else {
-        // Spotify -> YouTube 변환 검색
-        const q = `${track.title} ${track.artists || ''}`.trim();
-        const resp = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(q)}&platform=youtube`, {
-          timeout: 15000
-        });
-        const yt = (resp.data || [])[0];
-        if (!yt) {
-          setError('해당 Spotify 트랙에 대한 YouTube 영상을 찾지 못했습니다. 다른 검색어를 시도해보세요.');
-          return;
-        }
-        onAddTrack(yt);
+        // Spotify 트랙을 그대로 큐에 추가 (네이티브 재생)
+        const enriched = {
+          ...track,
+          uri: track.uri || (track.id ? `spotify:track:${track.id}` : undefined),
+          platform: 'spotify'
+        };
+        onAddTrack(enriched);
       }
 
       // 성공적인 추가 후 검색 결과 정리

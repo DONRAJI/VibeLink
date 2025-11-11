@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import './MusicPlayer.css';
+import SpotifyPlayer from './SpotifyPlayer';
 
 const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) => {
   // --- API 및 플레이어 상태 관리 ---
@@ -158,7 +159,7 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
 
   // --- 5. 렌더링 ---
 
-  // 트랙이 없을 때 표시 (기존과 동일)
+  // Spotify 방에서 아직 트랙 없을 때
   if (!currentTrack) {
     return (
       <div className="music-player empty">
@@ -171,7 +172,53 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
     );
   }
 
-  // 트랙이 있을 때
+  // Spotify 트랙이면 네이티브 컴포넌트 사용
+  if (currentTrack.platform === 'spotify') {
+    return (
+      <div className="music-player">
+        <SpotifyPlayer
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+          onPlayPause={onPlayPause}
+          onNext={onNext}
+          onEnded={onEnded}
+          isHost={isHost}
+        />
+        <div className="player-info">
+          <div className="track-info">
+            <h3 className="track-title">{currentTrack.title}</h3>
+            <div className="track-meta">
+              <span className="track-source">Spotify</span>
+              {currentTrack.artists && (
+                <span className="track-added-by">{currentTrack.artists}</span>
+              )}
+              {currentTrack.addedBy && (
+                <span className="track-added-by">추가: {currentTrack.addedBy}</span>
+              )}
+            </div>
+          </div>
+          <div className="player-controls">
+            <button
+              className={`control-btn ${internalPlaying ? 'playing' : ''}`}
+              onClick={internalPlaying ? handlePause : handlePlay}
+              disabled={!isHost}
+            >
+              {internalPlaying ? '⏸️ 일시정지' : '▶️ 재생'}
+            </button>
+            <button
+              className="control-btn next-btn"
+              onClick={onNext}
+              disabled={!isHost}
+            >
+              ⏭️ 다음 곡
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // YouTube 트랙 재생
   return (
     <div className="music-player">
       <div className="player-container">

@@ -55,7 +55,7 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
       
       <div className="queue-list">
         {queue.map((track, index) => (
-          <div key={track.videoId} className="queue-item">
+          <div key={track.id || track.videoId} className="queue-item">
             <div className="track-info">
               <div className="track-number">{index + 1}</div>
               <img 
@@ -88,14 +88,14 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
               <div className="vote-buttons">
                 <button
                   className="vote-btn upvote"
-                  onClick={(e) => handleVote(track.videoId, 'up', e)}
+                  onClick={(e) => handleVote(track.id || track.videoId, 'up', e)}
                   title="좋아요"
                 >
                   👍
                 </button>
                 <button
                   className="vote-btn downvote"
-                  onClick={(e) => handleVote(track.videoId, 'down', e)}
+                  onClick={(e) => handleVote(track.id || track.videoId, 'down', e)}
                   title="싫어요"
                 >
                   👎

@@ -29,8 +29,9 @@ class RoomSocketHandler {
     // (Auto-DJ 기능 제거됨)
 
     // 트랙 투표 이벤트
-    socket.on('voteTrack', async ({ roomCode, videoId, voteType }) => {
-      await this.handleVoteTrack(socket, roomCode, videoId, voteType);
+    socket.on('voteTrack', async ({ roomCode, videoId, trackId, voteType }) => {
+      const id = trackId || videoId; // 하위호환
+      await this.handleVoteTrack(socket, roomCode, id, voteType);
     });
 
     // 연결 해제 이벤트
@@ -89,8 +90,30 @@ class RoomSocketHandler {
       if (!room) return;
       // 큐 안전 가드: 없으면 초기화
       if (!Array.isArray(room.queue)) room.queue = [];
-
-      const newTrack = { ...track, addedBy, votes: 0 };
+      // 통합 트랙 구조: YouTube(videoId) 또는 Spotify(id, uri)
+      let newTrack;
+      if (track.platform === 'spotify') {
+        newTrack = {
+          id: track.id,
+          uri: track.uri,
+          title: track.title,
+          thumbnailUrl: track.thumbnailUrl,
+          artists: track.artists,
+          durationMs: track.durationMs,
+          platform: 'spotify',
+          addedBy,
+          votes: 0
+        };
+      } else {
+        newTrack = {
+          videoId: track.videoId,
+          title: track.title,
+          thumbnailUrl: track.thumbnailUrl,
+          platform: 'youtube',
+          addedBy,
+          votes: 0
+        };
+      }
       room.queue.push(newTrack);
   room.lastActivityAt = new Date();
   await room.save();
@@ -113,8 +136,13 @@ class RoomSocketHandler {
       if (action === 'play' && track) {
         room.currentTrack = track;
         room.isPlaying = true;
-        // 현재 트랙을 큐에서 제거
-        room.queue = room.queue.filter(t => t.videoId !== track.videoId);
+        // 현재 트랙을 큐에서 제거 (플랫폼별 식별자 사용)
+        room.queue = room.queue.filter(t => {
+          if (track.platform === 'spotify') {
+            return !(t.platform === 'spotify' && t.id === track.id);
+          }
+            return !(t.platform === 'youtube' && t.videoId === track.videoId);
+        });
       } else if (action === 'pause') {
         room.isPlaying = false;
       } else if (action === 'next') {
@@ -176,13 +204,13 @@ class RoomSocketHandler {
 
   // (Auto-DJ 추천 로직 제거)
 
-  async handleVoteTrack(socket, roomCode, videoId, voteType) {
+  async handleVoteTrack(socket, roomCode, trackId, voteType) {
     try {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
       
-      const track = room.queue.find(t => t.videoId === videoId);
+      const track = room.queue.find(t => (t.videoId === trackId) || (t.id === trackId));
       if (track) {
         if (voteType === 'up') {
           track.votes += 1;

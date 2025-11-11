@@ -40,9 +40,13 @@ router.get('/login', (req, res) => {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   if (!clientId) return res.status(500).send('Spotify Client ID 미설정');
   const state = Math.random().toString(36).slice(2);
+  // 추가: 스트리밍 및 플레이백 제어 스코프 포함 (웹 플레이백 SDK 및 재생 제어)
   const scope = [
     'user-read-email',
-    'user-read-private'
+    'user-read-private',
+    'streaming',
+    'user-read-playback-state',
+    'user-modify-playback-state'
   ].join(' ');
   const redirectUri = getRedirectUri(req);
   console.log('[spotify-oauth] computed redirectUri (login):', redirectUri);
@@ -110,7 +114,48 @@ router.get('/callback', async (req, res) => {
 router.get('/status/:userId', (req, res) => {
   const info = userTokens.get(req.params.userId);
   if (!info) return res.status(404).json({ authenticated: false });
-  res.json({ authenticated: true, product: info.profile.product });
+  res.json({ authenticated: true, product: info.profile.product, expiresAt: info.expiresAt });
+});
+
+// 토큰 갱신 함수
+async function refreshUserToken(userId) {
+  const info = userTokens.get(userId);
+  if (!info || !info.refreshToken) return null;
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const params = new URLSearchParams();
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', info.refreshToken);
+  try {
+    const resp = await axios.post('https://accounts.spotify.com/api/token', params, {
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    });
+    const { access_token, expires_in } = resp.data;
+    info.accessToken = access_token;
+    info.expiresAt = Date.now() + (expires_in * 1000);
+    userTokens.set(userId, info);
+    return info;
+  } catch (e) {
+    console.error('[spotify-oauth] refresh error', e.response?.status, e.response?.data || e.message);
+    return null;
+  }
+}
+
+// 웹 플레이백 SDK용 액세스 토큰 제공 (만료 시 자동 갱신 시도)
+router.get('/playback/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const info = userTokens.get(userId);
+  if (!info) return res.status(404).json({ message: '인증되지 않은 사용자입니다.' });
+  if (Date.now() > info.expiresAt - 15_000) {
+    // 만료 15초 전이면 갱신 시도
+    const refreshed = await refreshUserToken(userId);
+    if (!refreshed) return res.status(401).json({ message: '토큰 갱신 실패. 재인증 필요.' });
+    return res.json({ accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt });
+  }
+  return res.json({ accessToken: info.accessToken, expiresAt: info.expiresAt });
 });
 
 // Export both router and the token map so other routes can validate premium
