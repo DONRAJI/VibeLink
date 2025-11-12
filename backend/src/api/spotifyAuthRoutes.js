@@ -169,6 +169,42 @@ router.get('/playback/:userId', async (req, res) => {
   return res.json({ accessToken: info.accessToken, expiresAt: info.expiresAt });
 });
 
+router.post('/transfer', async (req, res) => {
+  const { userId, deviceId } = req.body;
+
+  if (!userId || !deviceId) {
+    return res.status(400).json({ message: '필수 정보(userId, deviceId)가 누락되었습니다.' });
+  }
+
+  try {
+    let tokenInfo = userTokens.get(userId);
+    if (!tokenInfo) return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다.' });
+    if (Date.now() > tokenInfo.expiresAt - 15_000) {
+      tokenInfo = await refreshUserToken(userId);
+      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신에 실패했습니다.' });
+    }
+    const { accessToken } = tokenInfo;
+
+    // Spotify API로 "재생 장치 변경" 요청
+    console.log(`[백엔드->Spotify] 장치 활성화 요청: device=${deviceId}`);
+    await axios.put('https://api.spotify.com/v1/me/player', 
+      {
+        device_ids: [deviceId],
+        play: false // 중요: 여기서는 재생을 시작하지 않고 장치만 활성화합니다.
+      }, 
+      {
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      }
+    );
+
+    res.status(204).send();
+
+  } catch (error) {
+    console.error('❌ Spotify 장치 활성화 오류 (백엔드):', error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ message: 'Spotify 장치 활성화 중 오류 발생' });
+  }
+});
+
 router.post('/play', async (req, res) => {
   const { userId, deviceId, trackUri } = req.body;
 

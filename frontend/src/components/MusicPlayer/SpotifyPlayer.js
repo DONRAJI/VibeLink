@@ -90,7 +90,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // --- [핵심 수정] --- 재생 제어 로직 전체 개선
   useEffect(() => {
     const controlPlayback = async () => {
-      // player가 준비되지 않았거나, 방장이 아니거나, Spotify 트랙이 아니면 아무것도 안 함
       if (!isHost || !player || !deviceIdRef.current || currentTrack?.platform !== 'spotify') {
         return;
       }
@@ -98,19 +97,30 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       const user = getStoredSpotifyUser();
       if (!user?.userId) return;
 
-      // 1. 새로운 트랙 재생 (가장 중요)
+      // 1. 새로운 트랙 재생 시
       if (currentTrack.id && lastTrackIdRef.current !== currentTrack.id) {
         lastTrackIdRef.current = currentTrack.id;
         if (isPlaying) {
-          console.log(`[프론트엔드->백엔드] 새 트랙 재생 요청: ${currentTrack.title}`);
-          
-          // --- [변경!] --- Spotify API 대신 우리 백엔드 API 호출
           try {
+            console.log(`[프론트엔드->백엔드] 1. 장치 활성화 요청`);
+            // --- [변경!] --- 1. 장치 활성화 API 호출
+            await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: user.userId,
+                deviceId: deviceIdRef.current,
+              }),
+            });
+
+            // 잠시 딜레이를 주어 Spotify 서버가 장치 변경을 인지할 시간을 줍니다. (안정성 향상)
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            console.log(`[프론트엔드->백엔드] 2. 새 트랙 재생 요청: ${currentTrack.title}`);
+            // --- [변경!] --- 2. 노래 재생 API 호출
             await fetch(`${API_BASE_URL}/api/spotify/play`, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 userId: user.userId,
                 deviceId: deviceIdRef.current,
@@ -118,25 +128,22 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
               }),
             });
           } catch (e) {
-            console.error('백엔드 재생 API 호출 실패:', e);
+            console.error('백엔드를 통한 재생 제어 실패:', e);
           }
         }
-        return; // 새 트랙 재생 후에는 아래 로직 실행 안 함
+        return;
       }
 
-      // 2. 같은 트랙에서 재생/일시정지 토글 (SDK 내장 함수 사용)
+      // 2. 같은 트랙에서 재생/일시정지 토글
       try {
         const playerState = await player.getCurrentState();
-        // 플레이어 상태가 없거나(비활성), 재생 상태가 이미 맞으면 아무것도 안 함
         if (!playerState || (isPlaying && !playerState.paused) || (!isPlaying && playerState.paused)) {
           return;
         }
 
         if (isPlaying && playerState.paused) {
-          console.log('[SpotifyPlayer] SDK resume() 호출');
           await player.resume();
         } else if (!isPlaying && !playerState.paused) {
-          console.log('[SpotifyPlayer] SDK pause() 호출');
           await player.pause();
         }
       } catch (e) {
@@ -145,7 +152,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
 
     controlPlayback();
-  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser]); // 의존성 배열에서 fetchPlaybackToken 제거
+  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser]);
 
 
   const activateAudio = async () => {
