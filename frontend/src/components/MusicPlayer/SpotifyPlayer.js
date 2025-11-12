@@ -129,7 +129,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       else if (!isPlaying && !isPaused) sendControlCommand('pause');
     }
   // --- [핵심 수정 4] --- deviceId를 의존성 배열에 추가
-  }, [currentTrack, isPlaying, isHost, player, deviceId, isActive, isPaused, sendControlCommand, getStoredSpotifyUser, deviceId]);
+  }, [currentTrack, isPlaying, isHost, player, deviceId, isActive, isPaused, sendControlCommand, getStoredSpotifyUser]);
 
   const handleVolume = async (e) => {
     const v = Number(e.target.value);
