@@ -37,7 +37,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
-    script.onerror = () => console.error('Spotify SDK 로드 실패');
     document.body.appendChild(script);
     return () => {
       try { delete window.onSpotifyWebPlaybackSDKReady; } catch {}
@@ -56,91 +55,88 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const setup = async () => {
       spotifyPlayer = new window.Spotify.Player({
         name: 'VibeLink Web Player',
-        getOAuthToken: async (cb) => {
-          try {
-            const token = await fetchPlaybackToken(user.userId);
-            cb(token);
-          } catch (e) { console.error('토큰 제공 실패:', e); }
-        },
+        getOAuthToken: (cb) => fetchPlaybackToken(user.userId).then(cb).catch(e => console.error('토큰 제공 실패:', e)),
         volume: volume / 100,
       });
 
       spotifyPlayer.addListener('ready', ({ device_id }) => {
-        console.log('[SpotifyPlayer] Ready with device_id', device_id);
+        console.log('[SpotifyPlayer] 기기 준비 완료, ID:', device_id);
         deviceIdRef.current = device_id;
       });
 
       spotifyPlayer.addListener('player_state_changed', (state) => {
         if (!state) return;
         setPositionMs(state.position || 0);
-        const dur = state.duration || state.track_window?.current_track?.duration_ms || 0;
-        setDurationMs(dur);
+        setDurationMs(state.duration || state.track_window?.current_track?.duration_ms || 0);
         const prev = state.track_window?.previous_tracks?.[0];
         if (state.paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
           endedRef.current?.();
         }
       });
 
-      // 기타 에러 리스너
-      spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`Device ${device_id} has gone offline`));
+      spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`기기 ${device_id} 오프라인`));
       spotifyPlayer.addListener('initialization_error', ({ message }) => console.error(message));
       spotifyPlayer.addListener('authentication_error', ({ message }) => console.error(message));
       spotifyPlayer.addListener('account_error', ({ message }) => console.error(message));
 
-      const connected = await spotifyPlayer.connect();
-      if (connected) setPlayer(spotifyPlayer);
+      if (await spotifyPlayer.connect()) {
+        setPlayer(spotifyPlayer);
+      }
     };
     setup();
-    return () => {
-      spotifyPlayer?.disconnect();
-    };
+    return () => spotifyPlayer?.disconnect();
   }, [sdkReady, player, isHost, getStoredSpotifyUser, fetchPlaybackToken, volume]);
 
-  // --- [핵심 수정] --- 재생 제어 로직 통합
+  // --- [핵심 수정] --- 재생 제어 로직 전체 개선
   useEffect(() => {
     const controlPlayback = async () => {
-      if (!isHost || !deviceIdRef.current) return;
+      if (!isHost || !player || !deviceIdRef.current) return;
       const user = getStoredSpotifyUser();
-      if (!user?.userId) return;
+      if (!user?.userId || currentTrack?.platform !== 'spotify') return;
 
-      const token = await fetchPlaybackToken(user.userId);
-      const isSpotifyTrack = currentTrack?.platform === 'spotify';
-
-      // 1. 새 트랙 재생 (가장 중요)
-      if (isSpotifyTrack && currentTrack.id && lastTrackIdRef.current !== currentTrack.id && isPlaying) {
-        console.log(`[SpotifyPlayer] 새 트랙 재생: ${currentTrack.title}`);
+      // 1. 새로운 트랙 재생 (가장 중요)
+      if (currentTrack.id && lastTrackIdRef.current !== currentTrack.id) {
         lastTrackIdRef.current = currentTrack.id;
-        // 기기 활성화 + 트랙 재생을 한 번의 API 호출로 처리!
-        await fetch(`https://api.spotify.com/v1/me/player`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            device_ids: [deviceIdRef.current],
-            play: true // 여기서 바로 재생 시작
-          })
-        });
-        await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uris: [currentTrack.uri || `spotify:track:${currentTrack.id}`] })
-        });
+        if (isPlaying) {
+          console.log(`[SpotifyPlayer] 새 트랙 재생 요청: ${currentTrack.title}`);
+          const token = await fetchPlaybackToken(user.userId);
+          // 단일 API 호출: "이 기기에서, 이 노래를 재생해줘"
+          await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uris: [currentTrack.uri || `spotify:track:${currentTrack.id}`] })
+          }).catch(e => console.error('새 트랙 재생 API 호출 실패:', e));
+        }
         return;
       }
 
-      // 2. 재생/일시정지 토글
-      if (isSpotifyTrack) {
-        const endpoint = isPlaying ? 'play' : 'pause';
-        console.log(`[SpotifyPlayer] ${endpoint} 요청`);
-        await fetch(`https://api.spotify.com/v1/me/player/${endpoint}?device_id=${deviceIdRef.current}`, {
-          method: 'PUT',
-          headers: { 'Authorization': `Bearer ${token}` }
-        }).catch(e => console.error(`${endpoint} 실패:`, e));
+      // 2. 같은 트랙에서 재생/일시정지 토글 (SDK 내장 함수 사용)
+      try {
+        const playerState = await player.getCurrentState();
+        if (!playerState) {
+          // 플레이어 상태가 불안정하면 API 호출로 대체
+          if (isPlaying) {
+             const token = await fetchPlaybackToken(user.userId);
+             await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}` }});
+          }
+          return;
+        }
+
+        if (isPlaying && playerState.paused) {
+          console.log('[SpotifyPlayer] SDK resume() 호출');
+          await player.resume();
+        } else if (!isPlaying && !playerState.paused) {
+          console.log('[SpotifyPlayer] SDK pause() 호출');
+          await player.pause();
+        }
+      } catch (e) {
+        console.error('재생/일시정지 제어 실패:', e);
       }
     };
 
     controlPlayback();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack, isPlaying, isHost, player]); // player를 의존성 배열에 추가하여 player 준비 후 실행되도록 보장
+  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser, fetchPlaybackToken]);
+
 
   const activateAudio = async () => {
     if (audioActivated) return;
@@ -157,17 +153,11 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   };
 
   const handleSeek = async (e) => {
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return;
     const newPos = Number(e.target.value);
-    setPositionMs(newPos);
-    try {
-      const token = await fetchPlaybackToken(user.userId);
-      await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPos}&device_id=${deviceIdRef.current}`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-    } catch (err) { console.error('시크 실패:', err); }
+    if (player) {
+      await player.seek(newPos);
+      setPositionMs(newPos); // 즉각적인 UI 피드백
+    }
   };
 
   const fmt = (ms) => {
@@ -181,6 +171,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const art = currentTrack?.thumbnailUrl || 'https://via.placeholder.com/160';
 
   return (
+    // ... JSX 부분은 변경 없음 ...
     <div className="player-container" style={{ position: 'relative' }}>
       <div className="spotify-player-skinned">
         <div className="spotify-card">
