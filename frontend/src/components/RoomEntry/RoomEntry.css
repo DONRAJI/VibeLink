@@ -195,3 +195,29 @@
     font-size: 0.9rem;
   }
 }
+
+/* RoomEntry.css 맨 아래에 추가 */
+
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 0.75rem;
+}
+
+.join-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.btn.full-width {
+  width: 100%;
+  justify-content: center;
+}
+
+.action-buttons {
+  /* 이 부분은 이제 create-options 내부의 버튼으로 대체되었으므로 제거하거나 비워둡니다. */
+}
