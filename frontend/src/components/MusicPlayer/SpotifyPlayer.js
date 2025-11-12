@@ -90,35 +90,45 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // --- [핵심 수정] --- 재생 제어 로직 전체 개선
   useEffect(() => {
     const controlPlayback = async () => {
-      if (!isHost || !player || !deviceIdRef.current) return;
+      // player가 준비되지 않았거나, 방장이 아니거나, Spotify 트랙이 아니면 아무것도 안 함
+      if (!isHost || !player || !deviceIdRef.current || currentTrack?.platform !== 'spotify') {
+        return;
+      }
+      
       const user = getStoredSpotifyUser();
-      if (!user?.userId || currentTrack?.platform !== 'spotify') return;
+      if (!user?.userId) return;
 
       // 1. 새로운 트랙 재생 (가장 중요)
       if (currentTrack.id && lastTrackIdRef.current !== currentTrack.id) {
         lastTrackIdRef.current = currentTrack.id;
         if (isPlaying) {
-          console.log(`[SpotifyPlayer] 새 트랙 재생 요청: ${currentTrack.title}`);
-          const token = await fetchPlaybackToken(user.userId);
-          // 단일 API 호출: "이 기기에서, 이 노래를 재생해줘"
-          await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
-            method: 'PUT',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uris: [currentTrack.uri || `spotify:track:${currentTrack.id}`] })
-          }).catch(e => console.error('새 트랙 재생 API 호출 실패:', e));
+          console.log(`[프론트엔드->백엔드] 새 트랙 재생 요청: ${currentTrack.title}`);
+          
+          // --- [변경!] --- Spotify API 대신 우리 백엔드 API 호출
+          try {
+            await fetch(`${API_BASE_URL}/api/spotify/play`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                userId: user.userId,
+                deviceId: deviceIdRef.current,
+                trackUri: currentTrack.uri || `spotify:track:${currentTrack.id}`,
+              }),
+            });
+          } catch (e) {
+            console.error('백엔드 재생 API 호출 실패:', e);
+          }
         }
-        return;
+        return; // 새 트랙 재생 후에는 아래 로직 실행 안 함
       }
 
       // 2. 같은 트랙에서 재생/일시정지 토글 (SDK 내장 함수 사용)
       try {
         const playerState = await player.getCurrentState();
-        if (!playerState) {
-          // 플레이어 상태가 불안정하면 API 호출로 대체
-          if (isPlaying) {
-             const token = await fetchPlaybackToken(user.userId);
-             await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, { method: 'PUT', headers: { 'Authorization': `Bearer ${token}` }});
-          }
+        // 플레이어 상태가 없거나(비활성), 재생 상태가 이미 맞으면 아무것도 안 함
+        if (!playerState || (isPlaying && !playerState.paused) || (!isPlaying && playerState.paused)) {
           return;
         }
 
@@ -135,7 +145,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
 
     controlPlayback();
-  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser, fetchPlaybackToken]);
+  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser]); // 의존성 배열에서 fetchPlaybackToken 제거
 
 
   const activateAudio = async () => {

@@ -169,6 +169,52 @@ router.get('/playback/:userId', async (req, res) => {
   return res.json({ accessToken: info.accessToken, expiresAt: info.expiresAt });
 });
 
-// Export both router and the token map so other routes can validate premium
+router.post('/play', async (req, res) => {
+  const { userId, deviceId, trackUri } = req.body;
+
+  // 입력값 검증
+  if (!userId || !deviceId || !trackUri) {
+    return res.status(400).json({ message: '필수 정보(userId, deviceId, trackUri)가 누락되었습니다.' });
+  }
+
+  try {
+    // 1. 사용자의 최신 액세스 토큰 가져오기 (만료 시 자동 갱신)
+    let tokenInfo = userTokens.get(userId);
+    if (!tokenInfo) {
+      return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다. 재인증이 필요합니다.' });
+    }
+    if (Date.now() > tokenInfo.expiresAt - 15_000) {
+      tokenInfo = await refreshUserToken(userId);
+      if (!tokenInfo) {
+        return res.status(401).json({ message: '토큰 갱신에 실패했습니다. 재인증이 필요합니다.' });
+      }
+    }
+    const { accessToken } = tokenInfo;
+
+    // 2. 백엔드 서버에서 Spotify API로 직접 재생 요청
+    console.log(`[백엔드->Spotify] 재생 요청: device=${deviceId}, track=${trackUri}`);
+    await axios.put(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, 
+      {
+        uris: [trackUri]
+      }, 
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // 성공적으로 요청을 보냈음을 프론트엔드에 알림 (내용 없음)
+    res.status(204).send();
+
+  } catch (error) {
+    console.error('❌ Spotify 재생 제어 오류 (백엔드):', error.response?.data || error.message);
+    // Spotify에서 받은 오류 메시지를 그대로 전달
+    res.status(error.response?.status || 500).json({ message: 'Spotify 재생 요청 중 오류가 발생했습니다.', details: error.response?.data });
+  }
+});
+
+
 module.exports = router;
-module.exports.userTokens = userTokens;
+module.exports.userTokens = userTokens; // 이 줄은 원래 있던 그대로 유지
