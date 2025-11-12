@@ -1,11 +1,11 @@
 const express = require('express');
 const axios = require('axios');
 const SpotifyService = require('../services/spotifyService');
+const userTokens = require('../services/spotifyTokenStore');
 
 const router = express.Router();
 
 // In-memory store (simple prototype; replace with DB in production)
-const userTokens = new Map(); // key: Spotify user id, value: { accessToken, refreshToken, expiresAt, profile }
 const pendingStates = new Map(); // key: state, value: expiresAt (ms)
 
 // --- [핵심 수정] --- 자기 자신을 require 하던 코드를 완전히 제거했습니다. ---
@@ -234,4 +234,3 @@ router.post('/control', async (req, res) => {
 });
 
 module.exports = router;
-module.exports.userTokens = userTokens;
