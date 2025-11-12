@@ -1,5 +1,3 @@
-// SpotifyPlayer.js (전체 교체)
-
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
@@ -16,14 +14,18 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
   const getStoredSpotifyUser = useCallback(() => {
     try {
-      return JSON.parse(localStorage.getItem('spotifyUser'));
-    } catch { return null; }
+      const raw = localStorage.getItem('spotifyUser');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
   }, []);
 
   const fetchPlaybackToken = useCallback(async (userId) => {
     const resp = await fetch(`${API_BASE_URL}/api/spotify/playback/${userId}`);
     if (!resp.ok) throw new Error('토큰을 가져오지 못했습니다');
-    return (await resp.json()).accessToken;
+    const data = await resp.json();
+    return data.accessToken;
   }, []);
 
   useEffect(() => {
@@ -31,17 +33,25 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
     document.body.appendChild(script);
-    window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+      setSdkReady(true);
+    };
+
     return () => {
       document.body.removeChild(script);
-      try { delete window.onSpotifyWebPlaybackSDKReady; } catch {}
+      try {
+        delete window.onSpotifyWebPlaybackSDKReady;
+      } catch {}
     };
   }, []);
 
   const endedRef = useRef(onEnded);
-  useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
+  useEffect(() => {
+    endedRef.current = onEnded;
+  }, [onEnded]);
 
-  // --- [핵심 수정 1] --- '장치 준비'와 '활성화'를 담당하는 useEffect
+  // '장치 준비'와 '활성화'를 담당하는 useEffect
   useEffect(() => {
     if (!sdkReady || !isHost || player) return;
 
@@ -102,7 +112,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
   }, [sdkReady, isHost, player, fetchPlaybackToken, getStoredSpotifyUser, volume]);
 
-  // --- [핵심 수정 2] --- '재생 제어'만 담당하는 useEffect
+  // '재생 제어'만 담당하는 useEffect
   useEffect(() => {
     if (!isHost || !player || !deviceIdRef.current || currentTrack?.platform !== 'spotify') return;
     
@@ -136,18 +146,40 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
   }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser]);
 
-  // ... (나머지 JSX 및 핸들러 함수들은 변경 없음)
-  
-  const activateAudio = async () => { /* ... */ };
-  const handleVolume = async (e) => { /* ... */ };
+  const activateAudio = async () => {
+    if (audioActivated) return;
+    try {
+      if (player) await player.activateElement();
+      setAudioActivated(true);
+    } catch (e) {
+      console.warn('오디오 활성화 실패:', e);
+    }
+  };
+
+  const handleVolume = async (e) => {
+    const v = Number(e.target.value);
+    setVolume(v);
+    if (player) {
+      await player.setVolume(v / 100).catch(err => console.error('볼륨 설정 실패:', err));
+    }
+  };
+
   const handleSeek = async (e) => {
     const newPos = Number(e.target.value);
     if (player) {
       await player.seek(newPos);
-      setPositionMs(newPos);
+      setPositionMs(newPos); // UI 즉각 반응
     }
   };
-  const fmt = (ms) => { /* ... */ };
+
+  const fmt = (ms) => {
+    if (isNaN(ms) || ms < 0) return '0:00';
+    const sec = Math.floor(ms / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
   const art = currentTrack?.thumbnailUrl || 'https://via.placeholder.com/160';
   
   return (
@@ -159,22 +191,45 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             <h3 className="spotify-title">{currentTrack?.title || '재생 준비'}</h3>
             <div className="spotify-progress-container">
               <span>{fmt(positionMs)}</span>
-              <input type="range" min={0} max={durationMs || 0} value={Math.min(positionMs, durationMs || 0)} onChange={handleSeek} className="spotify-progress-bar" disabled={!isHost || !durationMs} />
+              <input 
+                type="range" 
+                min={0} 
+                max={durationMs || 0} 
+                value={Math.min(positionMs, durationMs || 0)} 
+                onChange={handleSeek} 
+                className="spotify-progress-bar" 
+                disabled={!isHost || !durationMs} 
+              />
               <span>{fmt(durationMs)}</span>
             </div>
           </div>
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => handleSeek({ target: { value: 0 } })} disabled={!isHost}>⏮️</button>
-            <button className="spotify-control-btn spotify-play-pause-btn" onClick={() => { activateAudio(); onPlayPause(); }} disabled={!isHost}>{isPlaying ? '⏸️' : '▶️'}</button>
+            <button className="spotify-control-btn spotify-play-pause-btn" onClick={() => { activateAudio(); onPlayPause(); }} disabled={!isHost}>
+              {isPlaying ? '⏸️' : '▶️'}
+            </button>
             <button className="spotify-control-btn" onClick={onNext} disabled={!isHost}>⏭️</button>
           </div>
           <div className="spotify-volume-container">
             <span>🔊</span>
-            <input type="range" min={0} max={100} value={volume} onChange={handleVolume} disabled={!isHost} />
+            <input 
+              type="range" 
+              min={0} 
+              max={100} 
+              value={volume} 
+              onChange={handleVolume} 
+              disabled={!isHost} 
+            />
           </div>
         </div>
       </div>
-      {!audioActivated && isHost && ( <button onClick={activateAudio} style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'pointer', zIndex: 10 }} title="오디오 활성화" /> )}
+      {!audioActivated && isHost && (
+        <button 
+          onClick={activateAudio} 
+          style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'pointer', zIndex: 10 }} 
+          title="오디오 활성화" 
+        />
+      )}
     </div>
   );
 }
