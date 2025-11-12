@@ -3,23 +3,20 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
 export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) {
-  // 상태 관리
   const [player, setPlayer] = useState(null);
-  const deviceIdRef = useRef(null);
+  // --- [핵심 수정 1] --- deviceId를 ref가 아닌 state로 관리하여 변경을 감지
+  const [deviceId, setDeviceId] = useState(null);
   const lastTrackIdRef = useRef(null);
   
   // SDK가 직접 알려주는 실시간 상태
   const [isActive, setActive] = useState(false);
   const [sdkCurrentTrack, setSdkCurrentTrack] = useState(null);
   const [isPaused, setIsPaused] = useState(true);
-  
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
+
   const [volume, setVolume] = useState(80);
   const [sdkReady, setSdkReady] = useState(false);
-  
-  // --- [수정] --- audioActivated 상태와 setter 함수를 다시 사용합니다.
-  const [audioActivated, setAudioActivated] = useState(false);
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -31,21 +28,17 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return (await resp.json()).accessToken;
   }, []);
 
+  // SDK 스크립트 로드
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
     document.body.appendChild(script);
     window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
-    return () => {
-      document.body.removeChild(script);
-      try { delete window.onSpotifyWebPlaybackSDKReady; } catch {}
-    };
-  }, []);
+    return () => { player?.disconnect(); document.body.removeChild(script); try { delete window.onSpotifyWebPlaybackSDKReady; } catch {} };
+  }, [player]);
 
-  const endedRef = useRef(onEnded);
-  useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
-
+  // SDK 초기화, 연결, 이벤트 리스너 설정
   useEffect(() => {
     if (!sdkReady || !isHost || player) return;
     const user = getStoredSpotifyUser();
@@ -59,82 +52,71 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
     spotifyPlayer.addListener('ready', ({ device_id }) => {
       console.log('[SDK] 기기 준비 완료, ID:', device_id);
-      deviceIdRef.current = device_id;
-      fetch(`${API_BASE_URL}/api/spotify/transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId: device_id }),
-      });
+      // --- [핵심 수정 2] --- state를 업데이트하여 리렌더링 및 useEffect 트리거
+      setDeviceId(device_id); 
     });
 
     spotifyPlayer.addListener('player_state_changed', (state) => {
-      if (!state) {
-        setActive(false);
-        return;
-      }
+      if (!state) { setActive(false); return; }
       setSdkCurrentTrack(state.track_window.current_track);
       setIsPaused(state.paused);
       setPositionMs(state.position);
       setDurationMs(state.duration);
       setActive(true);
-      
-      const prev = state.track_window?.previous_tracks?.[0];
-      if (state.paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
-        endedRef.current?.();
-      }
     });
     
-    spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`기기 ${device_id} 오프라인`));
-    spotifyPlayer.addListener('initialization_error', ({ message }) => console.error('초기화 오류:', message));
-    spotifyPlayer.addListener('authentication_error', ({ message }) => console.error('인증 오류:', message));
-    spotifyPlayer.addListener('account_error', ({ message }) => console.error('계정 오류:', message));
+    spotifyPlayer.addListener('not_ready', () => setDeviceId(null));
 
     spotifyPlayer.connect().then(success => {
-      if (success) {
-        console.log('[SDK] 성공적으로 연결됨');
-        setPlayer(spotifyPlayer);
-      }
+      if (success) setPlayer(spotifyPlayer);
     });
 
-    return () => {
-      console.log('[SDK] 연결 해제');
-      player?.disconnect();
-    };
+    return () => spotifyPlayer.disconnect();
   }, [sdkReady, isHost, player, fetchPlaybackToken, getStoredSpotifyUser, volume]);
-  
-  const sendControlCommand = useCallback((action) => {
-    if (!isHost || !deviceIdRef.current) return;
+
+  // 'deviceId'가 준비되면, 장치를 활성화
+  useEffect(() => {
+    if (!isHost || !deviceId) return;
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
 
-    console.log(`[명령] 백엔드에 '${action}' 요청`);
+    console.log(`[명령] deviceId (${deviceId}) 준비 완료, 장치 활성화 요청`);
+    fetch(`${API_BASE_URL}/api/spotify/transfer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.userId, deviceId: deviceId }),
+    });
+  }, [deviceId, isHost, getStoredSpotifyUser]);
+  
+  // 백엔드에 제어 명령을 보내는 통합 함수
+  const sendControlCommand = useCallback((action) => {
+    if (!isHost || !deviceId) return;
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return;
     fetch(`${API_BASE_URL}/api/spotify/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: user.userId,
-        deviceId: deviceIdRef.current,
-        action: action,
-      }),
-    }).catch(e => console.error(`'${action}' 명령 전송 실패:`, e));
-  }, [isHost, getStoredSpotifyUser]);
+      body: JSON.stringify({ userId: user.userId, deviceId: deviceId, action: action }),
+    });
+  }, [isHost, deviceId, getStoredSpotifyUser]);
 
-
+  // 부모의 상태(props)와 'deviceId'가 모두 준비되었을 때 명령을 보냄
   useEffect(() => {
-    if (!isHost || !player || !deviceIdRef.current || currentTrack?.platform !== 'spotify') return;
+    // --- [핵심 수정 3] --- deviceId가 없으면 절대 명령을 보내지 않음
+    if (!isHost || !player || !deviceId || currentTrack?.platform !== 'spotify') return;
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
 
     if (currentTrack.id && lastTrackIdRef.current !== currentTrack.id) {
       lastTrackIdRef.current = currentTrack.id;
       if (isPlaying) {
-        console.log(`[명령] 새 트랙 재생: ${currentTrack.title}`);
+        console.log(`[명령] 새 트랙 재생: ${currentTrack.title} on device ${deviceId}`);
         fetch(`${API_BASE_URL}/api/spotify/play`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: user.userId,
-            deviceId: deviceIdRef.current,
+            deviceId: deviceId,
             trackUri: currentTrack.uri || `spotify:track:${currentTrack.id}`,
           }),
         });
@@ -146,19 +128,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       if (isPlaying && isPaused) sendControlCommand('resume');
       else if (!isPlaying && !isPaused) sendControlCommand('pause');
     }
-  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser, isActive, isPaused, sendControlCommand]);
-
-  // --- [수정] --- activateAudio 함수를 다시 정의하고 사용합니다.
-  const activateAudio = async () => {
-    if (audioActivated || !player) return; // 이미 활성화되었거나 player가 없으면 실행 안 함
-    try {
-      await player.activateElement();
-      setAudioActivated(true); // 한 번만 실행되도록 상태 변경
-      console.log('[SDK] 오디오 컨텍스트 활성화 성공');
-    } catch (e) {
-      console.warn('오디오 활성화 실패:', e);
-    }
-  };
+  // --- [핵심 수정 4] --- deviceId를 의존성 배열에 추가
+  }, [currentTrack, isPlaying, isHost, player, deviceId, isActive, isPaused, sendControlCommand, getStoredSpotifyUser, deviceId]);
 
   const handleVolume = async (e) => {
     const v = Number(e.target.value);
@@ -199,43 +170,23 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             <div className="spotify-progress-container">
               <span>{fmt(positionMs)}</span>
               <input 
-                type="range" 
-                min={0} 
-                max={durationMs || 1} 
-                value={positionMs} 
-                onMouseUp={handleSeek}
-                onChange={(e) => setPositionMs(Number(e.target.value))}
-                className="spotify-progress-bar" 
-                disabled={!isHost || !isActive} 
+                type="range" min={0} max={durationMs || 1} value={positionMs} 
+                onMouseUp={handleSeek} onChange={(e) => setPositionMs(Number(e.target.value))}
+                className="spotify-progress-bar" disabled={!isHost || !isActive} 
               />
               <span>{fmt(durationMs)}</span>
             </div>
           </div>
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => sendControlCommand('previous')} disabled={!isHost || !isActive}>⏮️</button>
-            {/* --- [수정] --- onClick 핸들러에서 activateAudio를 호출하도록 변경 */}
-            <button 
-              className="spotify-control-btn spotify-play-pause-btn" 
-              onClick={() => {
-                activateAudio(); // 오디오 활성화 시도
-                onPlayPause();   // 부모의 재생/일시정지 로직 실행
-              }} 
-              disabled={!isHost || !isActive}
-            >
+            <button className="spotify-control-btn spotify-play-pause-btn" onClick={onPlayPause} disabled={!isHost || !isActive}>
               {isPaused ? '▶️' : '⏸️'}
             </button>
             <button className="spotify-control-btn" onClick={() => sendControlCommand('next')} disabled={!isHost || !isActive}>⏭️</button>
           </div>
           <div className="spotify-volume-container">
             <span>🔊</span>
-            <input 
-              type="range" 
-              min={0} 
-              max={100} 
-              value={volume} 
-              onChange={handleVolume} 
-              disabled={!isHost || !isActive} 
-            />
+            <input type="range" min={0} max={100} value={volume} onChange={handleVolume} disabled={!isHost || !isActive} />
           </div>
         </div>
       </div>
