@@ -3,18 +3,21 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
 export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) {
+  // 상태 관리
   const [player, setPlayer] = useState(null);
   const deviceIdRef = useRef(null);
   const lastTrackIdRef = useRef(null);
-  const [is_active, setActive] = useState(false); // 현재 우리 플레이어가 활성 상태인지
-  const [current_track_sdk, setTrack] = useState(null); // SDK가 직접 알려주는 현재 트랙 정보
-  const [is_paused, setPaused] = useState(true); // SDK가 알려주는 일시정지 상태
+  
+  // --- [핵심 수정 1] --- SDK로부터 직접 상태를 받을 변수들
+  const [isActive, setActive] = useState(false);
+  const [sdkCurrentTrack, setSdkCurrentTrack] = useState(null);
+  const [isPaused, setIsPaused] = useState(true);
+  
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
   const [volume, setVolume] = useState(80);
   const [sdkReady, setSdkReady] = useState(false);
   const [audioActivated, setAudioActivated] = useState(false);
-
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -26,7 +29,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return (await resp.json()).accessToken;
   }, []);
 
-  // SDK 스크립트 로드
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
@@ -42,25 +44,20 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const endedRef = useRef(onEnded);
   useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
 
-  // --- [핵심 수정 1] --- 공식 문서의 초기화, 연결, 이벤트 리스너 설정 플로우
   useEffect(() => {
     if (!sdkReady || !isHost || player) return;
-
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
 
-    // 1. 플레이어 객체 생성
     const spotifyPlayer = new window.Spotify.Player({
       name: 'VibeLink Web Player',
       getOAuthToken: cb => fetchPlaybackToken(user.userId).then(cb),
       volume: volume / 100,
     });
 
-    // 2. 이벤트 리스너 연결
     spotifyPlayer.addListener('ready', ({ device_id }) => {
       console.log('[SpotifyPlayer] 기기 준비 완료, ID:', device_id);
       deviceIdRef.current = device_id;
-      // '준비'되면 즉시 '활성화' 요청 (장치 깨우기)
       fetch(`${API_BASE_URL}/api/spotify/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,32 +69,27 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
     spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`기기 ${device_id} 오프라인`));
     
-    // 플레이어 상태 변경 시, SDK가 보내주는 최신 정보로 내부 상태 업데이트
     spotifyPlayer.addListener('player_state_changed', (state) => {
       if (!state) {
         setActive(false);
         return;
       }
-      setTrack(state.track_window.current_track);
-      setPaused(state.paused);
+      setSdkCurrentTrack(state.track_window.current_track);
+      setIsPaused(state.paused);
       setPositionMs(state.position);
       setDurationMs(state.duration);
       setActive(true);
       
-      // 트랙 종료 감지 로직 (이전과 동일)
       const prev = state.track_window?.previous_tracks?.[0];
       if (state.paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
         endedRef.current?.();
       }
     });
     
-    // 기타 리스너
-    spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`기기 ${device_id} 오프라인`));
     spotifyPlayer.addListener('initialization_error', ({ message }) => console.error('초기화 오류:', message));
     spotifyPlayer.addListener('authentication_error', ({ message }) => console.error('인증 오류:', message));
     spotifyPlayer.addListener('account_error', ({ message }) => console.error('계정 오류:', message));
 
-    // 3. Spotify 서버와 연결 (가장 중요!)
     spotifyPlayer.connect().then(success => {
       if (success) {
         console.log('[SpotifyPlayer] SDK 성공적으로 연결됨. 이제 재생 준비 완료.');
@@ -111,8 +103,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
   }, [sdkReady, isHost, player, fetchPlaybackToken, getStoredSpotifyUser, volume]);
 
-
-  // --- [핵심 수정 2] --- '재생 제어'는 이제 '명령'만 전달
   useEffect(() => {
     if (!isHost || !player || !deviceIdRef.current || currentTrack?.platform !== 'spotify') return;
     
@@ -137,12 +127,19 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       return;
     }
 
-    // 같은 트랙에서 재생/일시정지 토글 (SDK 직접 제어)
-    if (is_active) {
-      player.togglePlay();
+    // --- [핵심 수정 2] --- togglePlay() 대신 명시적인 resume/pause 호출
+    if (isActive) {
+      // 부모가 '재생'을 원하는데 SDK가 '일시정지' 상태이면 -> 재생
+      if (isPlaying && isPaused) {
+        player.resume();
+      } 
+      // 부모가 '일시정지'를 원하는데 SDK가 '재생' 상태이면 -> 일시정지
+      else if (!isPlaying && !isPaused) {
+        player.pause();
+      }
     }
 
-  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser, is_active]);
+  }, [currentTrack, isPlaying, isHost, player, getStoredSpotifyUser, isActive, isPaused]);
 
   const activateAudio = async () => {
     if (audioActivated) return;
@@ -166,7 +163,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const newPos = Number(e.target.value);
     if (player) {
       await player.seek(newPos);
-      setPositionMs(newPos); // UI 즉각 반응
+      setPositionMs(newPos);
     }
   };
 
@@ -178,7 +175,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const art = currentTrack?.thumbnailUrl || 'https://via.placeholder.com/160';
+  // --- [핵심 수정 3] --- UI 렌더링 시 SDK 상태(sdkCurrentTrack)를 우선적으로 사용
+  const displayTrack = sdkCurrentTrack || currentTrack;
+  const art = displayTrack?.album?.images[0]?.url || displayTrack?.thumbnailUrl || 'https://via.placeholder.com/160';
+  const title = displayTrack?.name || displayTrack?.title || '재생 준비';
   
   return (
     <div className="player-container" style={{ position: 'relative' }}>
@@ -186,7 +186,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         <div className="spotify-card">
           <img src={art} alt="Album Art" className="spotify-art" />
           <div className="spotify-track-info">
-            <h3 className="spotify-title">{currentTrack?.title || '재생 준비'}</h3>
+            <h3 className="spotify-title">{title}</h3>
             <div className="spotify-progress-container">
               <span>{fmt(positionMs)}</span>
               <input 
@@ -203,8 +203,9 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           </div>
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => handleSeek({ target: { value: 0 } })} disabled={!isHost}>⏮️</button>
-            <button className="spotify-control-btn spotify-play-pause-btn" onClick={() => { activateAudio(); onPlayPause(); }} disabled={!isHost}>
-              {isPlaying ? '⏸️' : '▶️'}
+            <button className="spotify-control-btn spotify-play-pause-btn" onClick={() => { activateAudio(); onPlayPause(); }} disabled={!isHost || !isActive}>
+              {/* --- [핵심 수정 4] --- 버튼 아이콘도 SDK의 isPaused 상태를 기준으로 표시 */}
+              {isPaused ? '▶️' : '⏸️'}
             </button>
             <button className="spotify-control-btn" onClick={onNext} disabled={!isHost}>⏭️</button>
           </div>
