@@ -221,3 +221,39 @@
 .action-buttons {
   /* 이 부분은 이제 create-options 내부의 버튼으로 대체되었으므로 제거하거나 비워둡니다. */
 }
+
+.auth-status {
+  font-size: 0.85rem;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 12px;
+  text-align: center;
+}
+
+.auth-status.loading {
+  color: #555;
+  background-color: #f0f0f0;
+}
+
+.auth-status.success {
+  color: #155724;
+  background-color: #d4edda;
+  font-weight: 500;
+}
+
+.auth-status.error {
+  color: #721c24;
+  background-color: #f8d7da;
+}
+
+/* 반응형 웹 대응 */
+@media (max-width: 768px) {
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

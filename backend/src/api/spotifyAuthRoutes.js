@@ -112,9 +112,20 @@ router.get('/callback', async (req, res) => {
 });
 
 router.get('/status/:userId', (req, res) => {
-  const info = userTokens.get(req.params.userId);
-  if (!info) return res.status(404).json({ authenticated: false });
-  res.json({ authenticated: true, product: info.profile.product, expiresAt: info.expiresAt });
+  const { userId } = req.params;
+  const info = userTokens.get(userId);
+
+  // 서버 메모리에 사용자 정보가 없으면 인증되지 않은 것
+  if (!info) {
+    return res.status(200).json({ authenticated: false, message: '인증 정보 없음' });
+  }
+
+  // 정보가 있다면, 프리미엄 여부와 함께 상태 전송
+  res.status(200).json({
+    authenticated: true,
+    product: info.profile.product, // 'premium' 또는 'free' 등
+    userId: info.profile.id,
+  });
 });
 
 // 토큰 갱신 함수
