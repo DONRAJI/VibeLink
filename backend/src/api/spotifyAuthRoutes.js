@@ -251,6 +251,61 @@ router.post('/play', async (req, res) => {
   }
 });
 
+router.post('/control', async (req, res) => {
+  const { userId, deviceId, action } = req.body; // action: 'pause', 'resume', 'next', 'previous'
+
+  if (!userId || !action) {
+    return res.status(400).json({ message: '필수 정보(userId, action)가 누락되었습니다.' });
+  }
+
+  try {
+    let tokenInfo = userTokens.get(userId);
+    if (!tokenInfo) return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다.' });
+    if (Date.now() > tokenInfo.expiresAt - 15_000) {
+      tokenInfo = await refreshUserToken(userId);
+      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신에 실패했습니다.' });
+    }
+    const { accessToken } = tokenInfo;
+
+    let endpoint = '';
+    let method = 'PUT'; // 기본값
+
+    switch (action) {
+      case 'pause':
+        endpoint = 'pause';
+        break;
+      case 'resume':
+        endpoint = 'play'; // 재개는 play 엔드포인트를 사용합니다.
+        break;
+      case 'next':
+        endpoint = 'next';
+        method = 'POST';
+        break;
+      case 'previous':
+        endpoint = 'previous';
+        method = 'POST';
+        break;
+      default:
+        return res.status(400).json({ message: '유효하지 않은 action입니다.' });
+    }
+
+    const url = `https://api.spotify.com/v1/me/player/${endpoint}?device_id=${deviceId || ''}`;
+    console.log(`[백엔드->Spotify] 제어 요청: ${method} ${url}`);
+
+    await axios({
+      method: method,
+      url: url,
+      headers: { 'Authorization': `Bearer ${accessToken}` }
+    });
+
+    res.status(204).send();
+
+  } catch (error) {
+    console.error(`❌ Spotify '${action}' 제어 오류:`, error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ message: `Spotify '${action}' 요청 중 오류 발생` });
+  }
+});
+
 
 module.exports = router;
 module.exports.userTokens = userTokens; // 이 줄은 원래 있던 그대로 유지
