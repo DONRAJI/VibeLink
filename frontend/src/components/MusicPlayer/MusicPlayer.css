@@ -149,3 +149,10 @@
   cursor: pointer;
   margin-top: -5px;
 }
+
+.music-player.spotify-mode {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  margin-bottom: 0; /* App.css의 gap으로 간격 조절 */
+}

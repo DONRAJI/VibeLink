@@ -144,6 +144,42 @@
   gap: 1rem;
 }
 
+.create-options {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 2rem;
+}
+
+.button-group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.button-group .btn {
+  flex: 1;
+}
+
+.auth-section {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.auth-notice {
+  font-size: 0.85rem;
+  color: #c33;
+  margin-bottom: 8px;
+}
+
+.description {
+  font-size: 0.8rem;
+  color: #666;
+  margin-top: 8px;
+  text-align: left;
+}
+
 @media (max-width: 768px) {
   .room-entry-container {
     padding: 30px 20px;

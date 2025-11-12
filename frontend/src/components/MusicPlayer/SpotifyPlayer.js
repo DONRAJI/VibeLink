@@ -1,15 +1,9 @@
+// SpotifyPlayer.js (전체 교체)
+
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 
-// 백엔드 URL 환경변수
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
-/**
- * Spotify Web Playback SDK를 이용한 네이티브 재생 컴포넌트
- * 제한사항:
- * - Spotify Premium 계정 필요
- * - 브라우저/플랫폼 제약 존재
- * - 실제 재생은 인증된 사용자(대개 방장)의 계정/디바이스에서만 출력됨
- */
 export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) {
   const [sdkReady, setSdkReady] = useState(false);
   const [player, setPlayer] = useState(null);
@@ -17,18 +11,15 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const lastTrackIdRef = useRef(null);
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
-  const [volume, setVolume] = useState(80); // 0~100
+  const [volume, setVolume] = useState(80);
   const [audioActivated, setAudioActivated] = useState(false);
 
-  // 로컬에 저장된 스포티파이 사용자 정보 로드
-  function getStoredSpotifyUser() {
+  const getStoredSpotifyUser = useCallback(() => {
     try {
       const raw = localStorage.getItem('spotifyUser');
       return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  }
+    } catch { return null; }
+  }, []);
 
   const fetchPlaybackToken = useCallback(async (userId) => {
     const resp = await fetch(`${API_BASE_URL}/api/spotify/playback/${userId}`);
@@ -37,21 +28,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return data.accessToken;
   }, []);
 
-  // 장치 활성 전환(Transfer Playback)
-  const transferToDevice = useCallback(async (userId) => {
-    if (!deviceIdRef.current) return;
-    const token = await fetchPlaybackToken(userId);
-    await fetch('https://api.spotify.com/v1/me/player', {
-      method: 'PUT',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_ids: [deviceIdRef.current], play: false })
-    });
-  }, [fetchPlaybackToken]);
-
-  // SDK 스크립트 로드
   useEffect(() => {
     window.onSpotifyWebPlaybackSDKReady = () => setSdkReady(true);
-
     if (window.Spotify) {
       setSdkReady(true);
       return;
@@ -59,13 +37,15 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
     script.async = true;
-    script.onerror = () => console.error('Spotify Web Playback SDK 로드 실패');
+    script.onerror = () => console.error('Spotify SDK 로드 실패');
     document.body.appendChild(script);
-
     return () => {
       try { delete window.onSpotifyWebPlaybackSDKReady; } catch {}
     };
   }, []);
+
+  const endedRef = useRef(onEnded);
+  useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
 
   useEffect(() => {
     if (!sdkReady || player || !isHost) return;
@@ -80,94 +60,100 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           try {
             const token = await fetchPlaybackToken(user.userId);
             cb(token);
-          } catch (e) {
-            console.error('토큰 제공 실패:', e);
-          }
+          } catch (e) { console.error('토큰 제공 실패:', e); }
         },
         volume: volume / 100,
       });
 
       spotifyPlayer.addListener('ready', ({ device_id }) => {
+        console.log('[SpotifyPlayer] Ready with device_id', device_id);
         deviceIdRef.current = device_id;
       });
-      spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn('[SpotifyPlayer] Not Ready device=', device_id));
-      spotifyPlayer.addListener('initialization_error', ({ message }) => console.error('[SpotifyPlayer] init error', message));
-      spotifyPlayer.addListener('authentication_error', ({ message }) => console.error('[SpotifyPlayer] auth error', message));
-      spotifyPlayer.addListener('account_error', ({ message }) => console.error('[SpotifyPlayer] account error', message));
 
       spotifyPlayer.addListener('player_state_changed', (state) => {
         if (!state) return;
-        const prev = state.track_window?.previous_tracks?.[0];
-        const paused = state.paused;
         setPositionMs(state.position || 0);
         const dur = state.duration || state.track_window?.current_track?.duration_ms || 0;
         setDurationMs(dur);
-        if (paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
-          endedRef.current && endedRef.current();
+        const prev = state.track_window?.previous_tracks?.[0];
+        if (state.paused && prev && lastTrackIdRef.current && prev.id === lastTrackIdRef.current && state.position === 0) {
+          endedRef.current?.();
         }
       });
+
+      // 기타 에러 리스너
+      spotifyPlayer.addListener('not_ready', ({ device_id }) => console.warn(`Device ${device_id} has gone offline`));
+      spotifyPlayer.addListener('initialization_error', ({ message }) => console.error(message));
+      spotifyPlayer.addListener('authentication_error', ({ message }) => console.error(message));
+      spotifyPlayer.addListener('account_error', ({ message }) => console.error(message));
 
       const connected = await spotifyPlayer.connect();
       if (connected) setPlayer(spotifyPlayer);
     };
-
     setup();
-
     return () => {
-      if (spotifyPlayer) spotifyPlayer.disconnect();
+      spotifyPlayer?.disconnect();
     };
-  }, [sdkReady, player, isHost, fetchPlaybackToken, volume]);
+  }, [sdkReady, player, isHost, getStoredSpotifyUser, fetchPlaybackToken, volume]);
 
-  const endedRef = useRef(onEnded);
-  useEffect(() => { endedRef.current = onEnded; }, [onEnded]);
-
+  // --- [핵심 수정] --- 재생 제어 로직 통합
   useEffect(() => {
-    const doPlayIfNeeded = async () => {
-      if (!isHost || !player || !deviceIdRef.current) return;
+    const controlPlayback = async () => {
+      if (!isHost || !deviceIdRef.current) return;
       const user = getStoredSpotifyUser();
       if (!user?.userId) return;
 
-      if (currentTrack?.platform === 'spotify') {
-        if (currentTrack.id && lastTrackIdRef.current !== currentTrack.id && isPlaying) {
-          lastTrackIdRef.current = currentTrack.id;
-          try {
-            const token = await fetchPlaybackToken(user.userId);
-            await transferToDevice(user.userId);
-            await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
-              method: 'PUT',
-              headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ uris: [currentTrack.uri || `spotify:track:${currentTrack.id}`] })
-            });
-          } catch (e) {
-            console.error('Spotify 재생 요청 실패:', e);
-          }
-        } else {
-          try {
-            if (isPlaying) await player.resume();
-            else await player.pause();
-          } catch (e) {
-            console.error('재생/일시정지 실패:', e);
-          }
-        }
+      const token = await fetchPlaybackToken(user.userId);
+      const isSpotifyTrack = currentTrack?.platform === 'spotify';
+
+      // 1. 새 트랙 재생 (가장 중요)
+      if (isSpotifyTrack && currentTrack.id && lastTrackIdRef.current !== currentTrack.id && isPlaying) {
+        console.log(`[SpotifyPlayer] 새 트랙 재생: ${currentTrack.title}`);
+        lastTrackIdRef.current = currentTrack.id;
+        // 기기 활성화 + 트랙 재생을 한 번의 API 호출로 처리!
+        await fetch(`https://api.spotify.com/v1/me/player`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            device_ids: [deviceIdRef.current],
+            play: true // 여기서 바로 재생 시작
+          })
+        });
+        await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceIdRef.current}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uris: [currentTrack.uri || `spotify:track:${currentTrack.id}`] })
+        });
+        return;
+      }
+
+      // 2. 재생/일시정지 토글
+      if (isSpotifyTrack) {
+        const endpoint = isPlaying ? 'play' : 'pause';
+        console.log(`[SpotifyPlayer] ${endpoint} 요청`);
+        await fetch(`https://api.spotify.com/v1/me/player/${endpoint}?device_id=${deviceIdRef.current}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(e => console.error(`${endpoint} 실패:`, e));
       }
     };
-    doPlayIfNeeded();
-  }, [currentTrack, isPlaying, isHost, player, transferToDevice, fetchPlaybackToken]);
+
+    controlPlayback();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrack, isPlaying, isHost, player]); // player를 의존성 배열에 추가하여 player 준비 후 실행되도록 보장
 
   const activateAudio = async () => {
     if (audioActivated) return;
     try {
-      if (player && player.activateElement) await player.activateElement();
+      if (player) await player.activateElement();
       setAudioActivated(true);
-    } catch (e) {
-      console.warn('오디오 활성화 실패:', e);
-    }
+    } catch (e) { console.warn('오디오 활성화 실패:', e); }
   };
 
   const handleVolume = async (e) => {
     const v = Number(e.target.value);
     setVolume(v);
-    if (player) await player.setVolume(Math.min(1, Math.max(0, v / 100))).catch(err => console.error('볼륨 설정 실패:', err));
+    if (player) await player.setVolume(v / 100).catch(err => console.error('볼륨 설정 실패:', err));
   };
 
   const handleSeek = async (e) => {
@@ -176,15 +162,12 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const newPos = Number(e.target.value);
     setPositionMs(newPos);
     try {
-      // player.seek()는 로컬 재생 SDK에서만 동작하므로 API 호출로 대체
       const token = await fetchPlaybackToken(user.userId);
       await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPos}&device_id=${deviceIdRef.current}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-    } catch (err) {
-      console.error('시크 실패:', err);
-    }
+    } catch (err) { console.error('시크 실패:', err); }
   };
 
   const fmt = (ms) => {
@@ -202,24 +185,19 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       <div className="spotify-player-skinned">
         <div className="spotify-card">
           <img src={art} alt="Album Art" className="spotify-art" />
-
           <div className="spotify-track-info">
             <h3 className="spotify-title">{currentTrack?.title || '재생 준비'}</h3>
             <div className="spotify-progress-container">
               <span>{fmt(positionMs)}</span>
               <input
-                type="range"
-                min={0}
-                max={durationMs || 0}
+                type="range" min={0} max={durationMs || 0}
                 value={Math.min(positionMs, durationMs || 0)}
-                onChange={handleSeek}
-                className="spotify-progress-bar"
+                onChange={handleSeek} className="spotify-progress-bar"
                 disabled={!isHost || !durationMs}
               />
               <span>{fmt(durationMs)}</span>
             </div>
           </div>
-
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => handleSeek({ target: { value: 0 } })} disabled={!isHost}>⏮️</button>
             <button className="spotify-control-btn spotify-play-pause-btn" onClick={() => { activateAudio(); onPlayPause(); }} disabled={!isHost}>
@@ -227,14 +205,12 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             </button>
             <button className="spotify-control-btn" onClick={onNext} disabled={!isHost}>⏭️</button>
           </div>
-
           <div className="spotify-volume-container">
             <span>🔊</span>
             <input type="range" min={0} max={100} value={volume} onChange={handleVolume} disabled={!isHost} />
           </div>
         </div>
       </div>
-
       {!audioActivated && isHost && (
         <button onClick={activateAudio} style={{ position: 'absolute', inset: 0, background: 'transparent', border: 'none', cursor: 'pointer', zIndex: 10 }} title="오디오 활성화" />
       )}

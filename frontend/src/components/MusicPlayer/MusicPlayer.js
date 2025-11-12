@@ -175,7 +175,8 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
   // Spotify 트랙이면 네이티브 컴포넌트 사용
   if (currentTrack.platform === 'spotify') {
     return (
-      <div className="music-player">
+      // --- [수정] --- SpotifyPlayer만 렌더링하도록 변경
+      <div className="music-player spotify-mode">
         <SpotifyPlayer
           currentTrack={currentTrack}
           isPlaying={isPlaying}
@@ -184,36 +185,6 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
           onEnded={onEnded}
           isHost={isHost}
         />
-        <div className="player-info">
-          <div className="track-info">
-            <h3 className="track-title">{currentTrack.title}</h3>
-            <div className="track-meta">
-              <span className="track-source">Spotify</span>
-              {currentTrack.artists && (
-                <span className="track-added-by">{currentTrack.artists}</span>
-              )}
-              {currentTrack.addedBy && (
-                <span className="track-added-by">추가: {currentTrack.addedBy}</span>
-              )}
-            </div>
-          </div>
-          <div className="player-controls">
-            <button
-              className={`control-btn ${internalPlaying ? 'playing' : ''}`}
-              onClick={internalPlaying ? handlePause : handlePlay}
-              disabled={!isHost}
-            >
-              {internalPlaying ? '⏸️ 일시정지' : '▶️ 재생'}
-            </button>
-            <button
-              className="control-btn next-btn"
-              onClick={onNext}
-              disabled={!isHost}
-            >
-              ⏭️ 다음 곡
-            </button>
-          </div>
-        </div>
       </div>
     );
   }
