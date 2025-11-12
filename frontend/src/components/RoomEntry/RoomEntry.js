@@ -66,7 +66,14 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
         if (e.data?.type === 'SPOTIFY_AUTH') {
           window.removeEventListener('message', handler);
           w?.close();
-          // 인증 성공 후, 상태를 다시 확인하여 UI를 즉시 갱신
+          // 즉시 로컬 상태 갱신 후 서버 검증 재요청
+          const { userId, product } = e.data;
+          if (userId) {
+            const userInfo = { userId, product };
+            localStorage.setItem('spotifyUser', JSON.stringify(userInfo));
+            setSpotifyUser(userInfo);
+            setAuthStatus(product === 'premium' ? 'premium' : (product ? 'free' : 'none'));
+          }
           verifySpotifyAuth();
         }
       };
