@@ -8,6 +8,8 @@ const router = express.Router();
 const userTokens = new Map(); // key: Spotify user id, value: { accessToken, refreshToken, expiresAt, profile }
 const pendingStates = new Map(); // key: state, value: expiresAt (ms)
 
+// --- [핵심 수정] --- 자기 자신을 require 하던 코드를 완전히 제거했습니다. ---
+
 function pruneStates() {
   const now = Date.now();
   for (const [state, exp] of pendingStates) {
@@ -16,7 +18,6 @@ function pruneStates() {
 }
 
 function getBackendBase(req) {
-  // Trim and strip surrounding quotes if accidentally included
   let envBase = (process.env.BACKEND_URL || '').trim();
   if (envBase.startsWith('"') && envBase.endsWith('"')) {
     envBase = envBase.slice(1, -1);
@@ -25,14 +26,12 @@ function getBackendBase(req) {
     return envBase.replace(/\/$/, '');
   }
   const host = req.get('host');
-  // Behind proxies req.protocol may be 'http'; enforce https for common managed hosts
   const forceHttps = /onrender\.com$/.test(host) || /vercel\.app$/.test(host);
   const proto = forceHttps ? 'https' : req.protocol;
   return `${proto}://${host}`;
 }
 
 function getRedirectUri(req) {
-  // Prefer explicit env; otherwise default to backend callback URL
   return process.env.SPOTIFY_REDIRECT_URI || `${getBackendBase(req)}/api/spotify/callback`;
 }
 
@@ -40,7 +39,6 @@ router.get('/login', (req, res) => {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   if (!clientId) return res.status(500).send('Spotify Client ID 미설정');
   const state = Math.random().toString(36).slice(2);
-  // 추가: 스트리밍 및 플레이백 제어 스코프 포함 (웹 플레이백 SDK 및 재생 제어)
   const scope = [
     'user-read-email',
     'user-read-private',
@@ -49,8 +47,6 @@ router.get('/login', (req, res) => {
     'user-modify-playback-state'
   ].join(' ');
   const redirectUri = getRedirectUri(req);
-  console.log('[spotify-oauth] computed redirectUri (login):', redirectUri);
-  // store state (5 minutes TTL)
   pruneStates();
   pendingStates.set(state, Date.now() + 5 * 60 * 1000);
   const authUrl = 'https://accounts.spotify.com/authorize' +
@@ -73,7 +69,6 @@ router.get('/callback', async (req, res) => {
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
   if (!clientId || !clientSecret) return res.status(500).send('Spotify Client ID/Secret 미설정');
   const redirectUri = getRedirectUri(req);
-  console.log('[spotify-oauth] computed redirectUri (callback):', redirectUri);
 
   const params = new URLSearchParams();
   params.append('grant_type', 'authorization_code');
@@ -92,7 +87,7 @@ router.get('/callback', async (req, res) => {
     const service = new SpotifyService(clientId, clientSecret);
     const profile = await service.getUserProfile(access_token);
 
-    const userId = profile.id; // Spotify user id
+    const userId = profile.id;
     userTokens.set(userId, {
       accessToken: access_token,
       refreshToken: refresh_token,
@@ -100,13 +95,11 @@ router.get('/callback', async (req, res) => {
       profile
     });
 
-    // Tiny HTML page to pass data back to opener
     res.send(`<!DOCTYPE html><html><body><script>
       window.opener && window.opener.postMessage({ type: 'SPOTIFY_AUTH', userId: '${userId}', product: '${profile.product}' }, '*');
       document.write('인증 성공. 이 창은 닫아도 됩니다.');
     </script></body></html>`);
   } catch (e) {
-    console.error('[spotify-oauth] callback error', e.response?.status, e.response?.data || e.message);
     res.status(500).send('Spotify OAuth 처리 중 오류');
   }
 });
@@ -114,26 +107,23 @@ router.get('/callback', async (req, res) => {
 router.get('/status/:userId', (req, res) => {
   const { userId } = req.params;
   const info = userTokens.get(userId);
-
-  // 서버 메모리에 사용자 정보가 없으면 인증되지 않은 것
   if (!info) {
     return res.status(200).json({ authenticated: false, message: '인증 정보 없음' });
   }
-
-  // 정보가 있다면, 프리미엄 여부와 함께 상태 전송
   res.status(200).json({
     authenticated: true,
-    product: info.profile.product, // 'premium' 또는 'free' 등
+    product: info.profile.product,
     userId: info.profile.id,
   });
 });
 
-// 토큰 갱신 함수
 async function refreshUserToken(userId) {
   const info = userTokens.get(userId);
-  if (!info || !info.refreshToken) return null;
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!info || !info.refreshToken || !clientId || !clientSecret) {
+    return null;
+  }
   const params = new URLSearchParams();
   params.append('grant_type', 'refresh_token');
   params.append('refresh_token', info.refreshToken);
@@ -150,20 +140,20 @@ async function refreshUserToken(userId) {
     userTokens.set(userId, info);
     return info;
   } catch (e) {
-    console.error('[spotify-oauth] refresh error', e.response?.status, e.response?.data || e.message);
     return null;
   }
 }
 
-// 웹 플레이백 SDK용 액세스 토큰 제공 (만료 시 자동 갱신 시도)
 router.get('/playback/:userId', async (req, res) => {
+  if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+    return res.status(500).json({ message: '서버에 Spotify 환경 변수가 설정되지 않았습니다.' });
+  }
   const { userId } = req.params;
   const info = userTokens.get(userId);
   if (!info) return res.status(404).json({ message: '인증되지 않은 사용자입니다.' });
   if (Date.now() > info.expiresAt - 15_000) {
-    // 만료 15초 전이면 갱신 시도
     const refreshed = await refreshUserToken(userId);
-    if (!refreshed) return res.status(401).json({ message: '토큰 갱신 실패. 재인증 필요.' });
+    if (!refreshed) return res.status(401).json({ message: '토큰 갱신에 실패했습니다.' });
     return res.json({ accessToken: refreshed.accessToken, expiresAt: refreshed.expiresAt });
   }
   return res.json({ accessToken: info.accessToken, expiresAt: info.expiresAt });
@@ -171,141 +161,77 @@ router.get('/playback/:userId', async (req, res) => {
 
 router.post('/transfer', async (req, res) => {
   const { userId, deviceId } = req.body;
-
-  if (!userId || !deviceId) {
-    return res.status(400).json({ message: '필수 정보(userId, deviceId)가 누락되었습니다.' });
-  }
-
+  if (!userId || !deviceId) return res.status(400).json({ message: '필수 정보 누락' });
   try {
     let tokenInfo = userTokens.get(userId);
-    if (!tokenInfo) return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다.' });
+    if (!tokenInfo) return res.status(404).json({ message: '인증 정보 없음' });
     if (Date.now() > tokenInfo.expiresAt - 15_000) {
       tokenInfo = await refreshUserToken(userId);
-      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신에 실패했습니다.' });
+      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신 실패' });
     }
-    const { accessToken } = tokenInfo;
-
-    // Spotify API로 "재생 장치 변경" 요청
-    console.log(`[백엔드->Spotify] 장치 활성화 요청: device=${deviceId}`);
-    await axios.put('https://api.spotify.com/v1/me/player', 
-      {
-        device_ids: [deviceId],
-        play: false // 중요: 여기서는 재생을 시작하지 않고 장치만 활성화합니다.
-      }, 
-      {
-        headers: { 'Authorization': `Bearer ${accessToken}` }
-      }
+    await axios.put('https://api.spotify.com/v1/me/player',
+      { device_ids: [deviceId], play: false },
+      { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
     );
-
     res.status(204).send();
-
   } catch (error) {
-    console.error('❌ Spotify 장치 활성화 오류 (백엔드):', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ message: 'Spotify 장치 활성화 중 오류 발생' });
+    res.status(error.response?.status || 500).json({ message: '장치 활성화 실패' });
   }
 });
 
 router.post('/play', async (req, res) => {
   const { userId, deviceId, trackUri } = req.body;
-
-  // 입력값 검증
-  if (!userId || !deviceId || !trackUri) {
-    return res.status(400).json({ message: '필수 정보(userId, deviceId, trackUri)가 누락되었습니다.' });
-  }
-
+  if (!userId || !deviceId || !trackUri) return res.status(400).json({ message: '필수 정보 누락' });
   try {
-    // 1. 사용자의 최신 액세스 토큰 가져오기 (만료 시 자동 갱신)
     let tokenInfo = userTokens.get(userId);
-    if (!tokenInfo) {
-      return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다. 재인증이 필요합니다.' });
-    }
+    if (!tokenInfo) return res.status(404).json({ message: '인증 정보 없음' });
     if (Date.now() > tokenInfo.expiresAt - 15_000) {
       tokenInfo = await refreshUserToken(userId);
-      if (!tokenInfo) {
-        return res.status(401).json({ message: '토큰 갱신에 실패했습니다. 재인증이 필요합니다.' });
-      }
+      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신 실패' });
     }
-    const { accessToken } = tokenInfo;
-
-    // 2. 백엔드 서버에서 Spotify API로 직접 재생 요청
-    console.log(`[백엔드->Spotify] 재생 요청: device=${deviceId}, track=${trackUri}`);
-    await axios.put(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, 
-      {
-        uris: [trackUri]
-      }, 
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
+    await axios.put(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
+      { uris: [trackUri] },
+      { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
     );
-
-    // 성공적으로 요청을 보냈음을 프론트엔드에 알림 (내용 없음)
     res.status(204).send();
-
   } catch (error) {
-    console.error('❌ Spotify 재생 제어 오류 (백엔드):', error.response?.data || error.message);
-    // Spotify에서 받은 오류 메시지를 그대로 전달
-    res.status(error.response?.status || 500).json({ message: 'Spotify 재생 요청 중 오류가 발생했습니다.', details: error.response?.data });
+    res.status(error.response?.status || 500).json({ message: '재생 요청 실패' });
   }
 });
 
 router.post('/control', async (req, res) => {
-  const { userId, deviceId, action } = req.body; // action: 'pause', 'resume', 'next', 'previous'
-
+  const { userId, deviceId, action } = req.body;
   if (!userId || !action) {
-    return res.status(400).json({ message: '필수 정보(userId, action)가 누락되었습니다.' });
+    return res.status(400).json({ message: '필수 정보 누락' });
   }
-
   try {
     let tokenInfo = userTokens.get(userId);
-    if (!tokenInfo) return res.status(404).json({ message: '인증 정보를 찾을 수 없습니다.' });
+    if (!tokenInfo) return res.status(404).json({ message: '인증 정보 없음' });
     if (Date.now() > tokenInfo.expiresAt - 15_000) {
       tokenInfo = await refreshUserToken(userId);
-      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신에 실패했습니다.' });
+      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신 실패' });
     }
     const { accessToken } = tokenInfo;
-
     let endpoint = '';
-    let method = 'PUT'; // 기본값
-
+    let method = 'PUT';
     switch (action) {
-      case 'pause':
-        endpoint = 'pause';
-        break;
-      case 'resume':
-        endpoint = 'play'; // 재개는 play 엔드포인트를 사용합니다.
-        break;
-      case 'next':
-        endpoint = 'next';
-        method = 'POST';
-        break;
-      case 'previous':
-        endpoint = 'previous';
-        method = 'POST';
-        break;
-      default:
-        return res.status(400).json({ message: '유효하지 않은 action입니다.' });
+      case 'pause': endpoint = 'pause'; break;
+      case 'resume': endpoint = 'play'; break;
+      case 'next': endpoint = 'next'; method = 'POST'; break;
+      case 'previous': endpoint = 'previous'; method = 'POST'; break;
+      default: return res.status(400).json({ message: '유효하지 않은 action' });
     }
-
     const url = `https://api.spotify.com/v1/me/player/${endpoint}?device_id=${deviceId || ''}`;
-    console.log(`[백엔드->Spotify] 제어 요청: ${method} ${url}`);
-
     await axios({
       method: method,
       url: url,
       headers: { 'Authorization': `Bearer ${accessToken}` }
     });
-
     res.status(204).send();
-
   } catch (error) {
-    console.error(`❌ Spotify '${action}' 제어 오류:`, error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ message: `Spotify '${action}' 요청 중 오류 발생` });
+    res.status(error.response?.status || 500).json({ message: `Spotify '${action}' 요청 실패` });
   }
 });
 
-
 module.exports = router;
-module.exports.userTokens = userTokens; // 이 줄은 원래 있던 그대로 유지
+module.exports.userTokens = userTokens;
