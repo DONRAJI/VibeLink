@@ -134,13 +134,11 @@ router.post('/', async (req, res) => {
         return res.status(403).json({ message: 'Spotify 프리미엄 방을 생성하려면 먼저 Spotify 인증이 필요합니다.' });
       }
       // 임시 메모리 저장소 접근 (auth 라우터에서 설정됨)
-      const { userTokens } = require('./spotifyAuthRoutes');
       const tokenInfo = userTokens.get(userId);
       if (!tokenInfo || tokenInfo.profile?.product !== 'premium') {
-        return res.status(403).json({ message: 'Spotify 프리미엄 사용자만 Spotify 방을 생성할 수 있습니다.' });
+        return res.status(403).json({ message: 'Spotify 프리미엄 사용자만 방을 생성할 수 있습니다.' });
       }
     }
-
     const room = new Room({
       code,
       host: host.trim(),
