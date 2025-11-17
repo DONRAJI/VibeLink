@@ -147,6 +147,7 @@ function App() {
   // 방 경로 진입 시 roomCode가 비어있으면 자동 조인 지원
   function RoomRouteWrapper() {
     const { code } = useParams();
+    const lastJoinRef = useRef(null);
     useEffect(() => {
       if (!code) return;
       let savedName = '';
@@ -159,7 +160,9 @@ function App() {
         savedName = input.trim();
         try { localStorage.setItem('nickname', savedName); } catch {}
       }
-      // 다른 방으로 이동하는 경우 이전 연결 정리 후 재접속
+      // 이미 동일 코드로 조인 완료된 경우 중복 emit 방지
+      if (lastJoinRef.current === code && roomCode === code) return;
+
       if (roomCode && roomCode !== code) {
         try { socket.disconnect(); } catch {}
         setCurrentTrack(null);
@@ -172,6 +175,7 @@ function App() {
       setNickname(savedName);
       setIsHost(false);
       socket.emit('joinRoom', { roomCode: code, nickname: savedName });
+      lastJoinRef.current = code;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code]);
 

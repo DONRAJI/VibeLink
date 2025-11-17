@@ -49,6 +49,12 @@ class RoomSocketHandler {
       const normalizedCode = roomCode.toString().toUpperCase();
       const nickname = typeof data === 'object' ? (data?.nickname || '') : '';
 
+      // 이미 동일 방에 참가한 상태면 중복 처리 방지
+      if (socket.roomCode && socket.roomCode === normalizedCode) {
+        console.log(`⚠️ 중복 joinRoom 무시: ${socket.id} -> ${normalizedCode}`);
+        return;
+      }
+
       const room = await Room.findOne({ code: normalizedCode });
       if (!room) {
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
@@ -76,7 +82,7 @@ class RoomSocketHandler {
   const history = (room.chatMessages || []).slice(-100);
   socket.emit('chatHistory', history);
       
-      console.log(`유저 ${socket.id}가 ${roomCode} 방에 참가했습니다.`);
+      console.log(`유저 ${socket.id}가 ${normalizedCode} 방에 참가했습니다.`);
     } catch (error) {
       console.error('방 참가 오류:', error);
       socket.emit('roomError', { message: '방 참가 중 오류가 발생했습니다.' });
