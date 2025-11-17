@@ -31,30 +31,22 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return (await resp.json()).accessToken;
   }, []);
 
-  // 브라우저 오디오 활성화 + 서버 전환 재시도
-  const ensureActivationAndTransfer = useCallback(async () => {
+  // 브라우저 오디오 활성화만 수행 (전환 호출 제거)
+  const ensureActivation = useCallback(async () => {
     if (!isHost) return false;
-    if (!player || !deviceId) return false;
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return false;
+    if (!player) return false;
     try {
       if (player.activateElement) {
         await player.activateElement();
       }
-      const resp = await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId })
-      });
-      if (!resp.ok) throw new Error(`transfer ${resp.status}`);
       setNeedsActivation(false);
       return true;
     } catch (e) {
-      console.warn('[SpotifyPlayer] ensureActivationAndTransfer 실패:', e.message);
+      console.warn('[SpotifyPlayer] ensureActivation 실패:', e?.message || e);
       setNeedsActivation(true);
       return false;
     }
-  }, [isHost, player, deviceId, getStoredSpotifyUser]);
+  }, [isHost, player]);
 
   // 디바이스 목록 조회 (진단용)
   const fetchDevices = useCallback(async () => {
@@ -68,34 +60,52 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     } catch { return []; }
   }, [getStoredSpotifyUser]);
 
-  // 재생/전환 재시도 로직 (백오프)
+  // 서버 디바이스 목록과 동기화 (가능하면 SDK 장치 식별)
+  const syncDeviceIdFromServer = useCallback(async () => {
+    const devices = await fetchDevices();
+    if (!devices || devices.length === 0) return null;
+    let matched = devices.find(d => d.name === 'VibeLink Web Player');
+    if (!matched) matched = devices.find(d => (d.name || '').toLowerCase().includes('web player'));
+    if (matched) {
+      if (matched.id !== deviceId) setDeviceId(matched.id);
+      return matched.id;
+    }
+    return null;
+  }, [fetchDevices, deviceId]);
+
+  // 재생 재시도 로직 (play-first, transfer 제거)
   const retryPlay = useCallback(async (trackUri, maxAttempts = 5) => {
     const user = getStoredSpotifyUser();
-    if (!user?.userId || !deviceId) return false;
+    if (!user?.userId) return false;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // 디바이스 확인
-      const devices = await fetchDevices();
-      const found = devices.find(d => d.id === deviceId);
-      console.log(`[SpotifyPlayer][retryPlay] attempt=${attempt} devicePresent=${!!found}`);
-      if (!found) {
-        // 잠시 대기 후 재시도
+      const activated = await ensureActivation();
+      if (!activated) {
         await new Promise(r => setTimeout(r, attempt * 300));
         continue;
       }
-      // 전환 시도
-      const transferOk = await ensureActivationAndTransfer();
-      if (!transferOk) {
+      let targetDeviceId = deviceId;
+      if (!targetDeviceId) {
+        targetDeviceId = await syncDeviceIdFromServer();
+      } else {
+        // 서버 디바이스 확인해 존재하지 않으면 동기화
+        const devices = await fetchDevices();
+        const exists = devices.some(d => d.id === targetDeviceId);
+        if (!exists) {
+          targetDeviceId = await syncDeviceIdFromServer();
+        }
+      }
+      if (!targetDeviceId) {
         await new Promise(r => setTimeout(r, attempt * 300));
         continue;
       }
-      // 재생 시도
       const playResp = await fetch(`${API_BASE_URL}/api/spotify/play`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+        body: JSON.stringify({ userId: user.userId, deviceId: targetDeviceId, trackUri })
       });
       if (playResp.ok) {
         console.log('[SpotifyPlayer][retryPlay] play success');
+        setNeedsActivation(false);
         return true;
       } else {
         console.warn(`[SpotifyPlayer][retryPlay] play failed status=${playResp.status}`);
@@ -105,7 +115,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     console.error('[SpotifyPlayer][retryPlay] all attempts failed');
     setNeedsActivation(true);
     return false;
-  }, [deviceId, ensureActivationAndTransfer, fetchDevices, getStoredSpotifyUser]);
+  }, [deviceId, ensureActivation, fetchDevices, getStoredSpotifyUser, syncDeviceIdFromServer]);
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -130,28 +140,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     spotifyPlayer.addListener('ready', async ({ device_id }) => {
       console.log('[SDK] 기기 준비 완료, ID:', device_id);
       setDeviceId(device_id);
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.userId, deviceId: device_id }),
-        });
-
-        if (response.ok) {
-          console.log('[SpotifyPlayer] 장치 활성화 성공');
-          setNeedsActivation(false);
-        } else if (response.status === 404) {
-          console.warn('[SpotifyPlayer] 활성 장치 없음(404). 사용자 활성화 필요.');
-          setNeedsActivation(true);
-        } else {
-          console.error(`[SpotifyPlayer] 장치 활성화 실패: ${response.status}`);
-          setNeedsActivation(true);
-        }
-      } catch (e) {
-        console.error('[SpotifyPlayer] transfer API 호출 중 네트워크 오류:', e);
-        setNeedsActivation(true);
-      }
+      // 초기에는 전환 호출을 하지 않고, 실제 재생 시도 시 활성화/재생을 진행합니다.
+      setNeedsActivation(true);
     });
 
     spotifyPlayer.addListener('player_state_changed', (state) => {
@@ -236,7 +226,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             <p>음악을 재생하려면, 다른 기기(PC, 스마트폰)에서 Spotify를 실행하여 아무 곡이나 잠시 재생해주세요.</p>
             <p>활성화 후 이 곳에서 음악 제어가 가능해집니다.</p>
             <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
-              <button onClick={ensureActivationAndTransfer}>브라우저 활성화</button>
+              <button onClick={ensureActivation}>브라우저 활성화</button>
               <button onClick={async () => { const devices = await fetchDevices(); console.log('[SpotifyPlayer] devices', devices); }}>디바이스 진단</button>
               <button onClick={() => window.open('https://open.spotify.com', '_blank')}>Spotify 열기</button>
             </div>
@@ -261,7 +251,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           </div>
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => sendControlCommand('previous')} disabled={!isHost || !isActive}>⏮️</button>
-            <button className="spotify-control-btn spotify-play-pause-btn" onClick={async () => { if (isPaused) { await ensureActivationAndTransfer(); } onPlayPause(); }} disabled={!isHost || !isActive}>
+            <button className="spotify-control-btn spotify-play-pause-btn" onClick={async () => { if (isPaused) { await ensureActivation(); } onPlayPause(); }} disabled={!isHost || !isActive}>
               {isPaused ? '▶️' : '⏸️'}
             </button>
             <button className="spotify-control-btn" onClick={() => sendControlCommand('next')} disabled={!isHost || !isActive}>⏭️</button>
