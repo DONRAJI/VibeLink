@@ -1,14 +1,14 @@
+// api/spotifyAuthRoutes.js (전체 코드)
+
 const express = require('express');
 const axios = require('axios');
 const SpotifyService = require('../services/spotifyService');
+// 공유 저장소에서 userTokens를 가져옵니다.
 const userTokens = require('../services/spotifyTokenStore');
 
 const router = express.Router();
 
-// In-memory store (simple prototype; replace with DB in production)
-const pendingStates = new Map(); // key: state, value: expiresAt (ms)
-
-// --- [핵심 수정] --- 자기 자신을 require 하던 코드를 완전히 제거했습니다. ---
+const pendingStates = new Map();
 
 function pruneStates() {
   const now = Date.now();
@@ -39,41 +39,25 @@ router.get('/login', (req, res) => {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   if (!clientId) return res.status(500).send('Spotify Client ID 미설정');
   const state = Math.random().toString(36).slice(2);
-  const scope = [
-    'user-read-email',
-    'user-read-private',
-    'streaming',
-    'user-read-playback-state',
-    'user-modify-playback-state'
-  ].join(' ');
+  const scope = 'user-read-email user-read-private streaming user-read-playback-state user-modify-playback-state';
   const redirectUri = getRedirectUri(req);
   pruneStates();
   pendingStates.set(state, Date.now() + 5 * 60 * 1000);
-  const authUrl = 'https://accounts.spotify.com/authorize' +
-    `?response_type=code&client_id=${encodeURIComponent(clientId)}` +
-    `&scope=${encodeURIComponent(scope)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&state=${encodeURIComponent(state)}`;
+  const authUrl = `https://accounts.spotify.com/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&scope=${encodeURIComponent(scope)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`;
   res.json({ authUrl, state });
 });
 
 router.get('/callback', async (req, res) => {
   const { code, state } = req.query;
-  if (!code) return res.status(400).send('code가 없습니다.');
-  pruneStates();
-  if (!state || !pendingStates.has(state)) {
-    return res.status(400).send('invalid state');
+  if (!code || !state || !pendingStates.has(state)) {
+    return res.status(400).send('유효하지 않은 요청입니다.');
   }
   pendingStates.delete(state);
+
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return res.status(500).send('Spotify Client ID/Secret 미설정');
   const redirectUri = getRedirectUri(req);
-
-  const params = new URLSearchParams();
-  params.append('grant_type', 'authorization_code');
-  params.append('code', code);
-  params.append('redirect_uri', redirectUri);
+  const params = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri });
 
   try {
     const tokenResp = await axios.post('https://accounts.spotify.com/api/token', params, {
@@ -83,38 +67,20 @@ router.get('/callback', async (req, res) => {
       }
     });
     const { access_token, refresh_token, expires_in } = tokenResp.data;
-
     const service = new SpotifyService(clientId, clientSecret);
     const profile = await service.getUserProfile(access_token);
-
-    const userId = profile.id;
-    userTokens.set(userId, {
-      accessToken: access_token,
-      refreshToken: refresh_token,
-      expiresAt: Date.now() + (expires_in * 1000),
-      profile
-    });
-
-    res.send(`<!DOCTYPE html><html><body><script>
-      window.opener && window.opener.postMessage({ type: 'SPOTIFY_AUTH', userId: '${userId}', product: '${profile.product}' }, '*');
-      document.write('인증 성공. 이 창은 닫아도 됩니다.');
-    </script></body></html>`);
+    userTokens.set(profile.id, { accessToken: access_token, refreshToken: refresh_token, expiresAt: Date.now() + expires_in * 1000, profile });
+    res.send(`<script>window.opener && window.opener.postMessage({ type: 'SPOTIFY_AUTH', userId: '${profile.id}', product: '${profile.product}' }, '*'); window.close();</script>`);
   } catch (e) {
+    console.error('Spotify OAuth 콜백 처리 중 오류:', e.response?.data || e.message);
     res.status(500).send('Spotify OAuth 처리 중 오류');
   }
 });
 
 router.get('/status/:userId', (req, res) => {
-  const { userId } = req.params;
-  const info = userTokens.get(userId);
-  if (!info) {
-    return res.status(200).json({ authenticated: false, message: '인증 정보 없음' });
-  }
-  res.status(200).json({
-    authenticated: true,
-    product: info.profile.product,
-    userId: info.profile.id,
-  });
+  const info = userTokens.get(req.params.userId);
+  if (!info) return res.json({ authenticated: false });
+  res.json({ authenticated: true, product: info.profile.product, userId: info.profile.id });
 });
 
 async function refreshUserToken(userId) {
@@ -122,11 +88,10 @@ async function refreshUserToken(userId) {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
   if (!info || !info.refreshToken || !clientId || !clientSecret) {
+    console.error('[spotify-oauth] 토큰 갱신 실패: 필수 정보 부족');
     return null;
   }
-  const params = new URLSearchParams();
-  params.append('grant_type', 'refresh_token');
-  params.append('refresh_token', info.refreshToken);
+  const params = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: info.refreshToken });
   try {
     const resp = await axios.post('https://accounts.spotify.com/api/token', params, {
       headers: {
@@ -136,10 +101,11 @@ async function refreshUserToken(userId) {
     });
     const { access_token, expires_in } = resp.data;
     info.accessToken = access_token;
-    info.expiresAt = Date.now() + (expires_in * 1000);
+    info.expiresAt = Date.now() + expires_in * 1000;
     userTokens.set(userId, info);
     return info;
   } catch (e) {
+    console.error('Spotify 토큰 갱신 실패:', e.response?.data || e.message);
     return null;
   }
 }
@@ -175,6 +141,7 @@ router.post('/transfer', async (req, res) => {
     );
     res.status(204).send();
   } catch (error) {
+    console.error('Spotify 장치 활성화 실패:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ message: '장치 활성화 실패' });
   }
 });
@@ -195,6 +162,7 @@ router.post('/play', async (req, res) => {
     );
     res.status(204).send();
   } catch (error) {
+    console.error('Spotify 재생 요청 실패:', error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ message: '재생 요청 실패' });
   }
 });
@@ -229,6 +197,7 @@ router.post('/control', async (req, res) => {
     });
     res.status(204).send();
   } catch (error) {
+    console.error(`Spotify '${action}' 제어 실패:`, error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ message: `Spotify '${action}' 요청 실패` });
   }
 });
