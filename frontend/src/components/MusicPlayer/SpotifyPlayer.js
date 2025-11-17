@@ -31,6 +31,31 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return (await resp.json()).accessToken;
   }, []);
 
+  // 브라우저 오디오 활성화 + 서버 전환 재시도
+  const ensureActivationAndTransfer = useCallback(async () => {
+    if (!isHost) return false;
+    if (!player || !deviceId) return false;
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return false;
+    try {
+      if (player.activateElement) {
+        await player.activateElement();
+      }
+      const resp = await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.userId, deviceId })
+      });
+      if (!resp.ok) throw new Error(`transfer ${resp.status}`);
+      setNeedsActivation(false);
+      return true;
+    } catch (e) {
+      console.warn('[SpotifyPlayer] ensureActivationAndTransfer 실패:', e.message);
+      setNeedsActivation(true);
+      return false;
+    }
+  }, [isHost, player, deviceId, getStoredSpotifyUser]);
+
   useEffect(() => {
     const script = document.createElement('script');
     script.src = 'https://sdk.scdn.co/spotify-player.js';
@@ -123,7 +148,11 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             deviceId: deviceId,
             trackUri: currentTrack.uri || `spotify:track:${currentTrack.id}`,
           }),
-        });
+        }).then(resp => {
+          if (!resp.ok && resp.status === 404) {
+            setNeedsActivation(true);
+          }
+        }).catch(() => setNeedsActivation(true));
       }
       return;
     }
@@ -167,7 +196,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             <h4>🎵 Spotify 플레이어 활성화 필요</h4>
             <p>음악을 재생하려면, 다른 기기(PC, 스마트폰)에서 Spotify를 실행하여 아무 곡이나 잠시 재생해주세요.</p>
             <p>활성화 후 이 곳에서 음악 제어가 가능해집니다.</p>
-            <button onClick={() => window.open('https://open.spotify.com', '_blank')}>Spotify 열기</button>
+            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+              <button onClick={ensureActivationAndTransfer}>브라우저에서 활성화</button>
+              <button onClick={() => window.open('https://open.spotify.com', '_blank')}>Spotify 열기</button>
+            </div>
           </div>
         </div>
       )}
@@ -189,7 +221,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           </div>
           <div className="spotify-controls">
             <button className="spotify-control-btn" onClick={() => sendControlCommand('previous')} disabled={!isHost || !isActive}>⏮️</button>
-            <button className="spotify-control-btn spotify-play-pause-btn" onClick={onPlayPause} disabled={!isHost || !isActive}>
+            <button className="spotify-control-btn spotify-play-pause-btn" onClick={async () => { if (isPaused) { await ensureActivationAndTransfer(); } onPlayPause(); }} disabled={!isHost || !isActive}>
               {isPaused ? '▶️' : '⏸️'}
             </button>
             <button className="spotify-control-btn" onClick={() => sendControlCommand('next')} disabled={!isHost || !isActive}>⏭️</button>
