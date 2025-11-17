@@ -168,6 +168,7 @@ router.post('/transfer', async (req, res) => {
       console.error('Data:', error.response.data);
       console.error('Status:', error.response.status);
       console.error('Headers:', error.response.headers);
+      return res.status(error.response.status).json(error.response.data);
     } else if (error.request) {
       // 요청은 보냈으나 응답을 받지 못함
       console.error('Request:', error.request);
