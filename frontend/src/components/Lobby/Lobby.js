@@ -59,8 +59,8 @@ export default function Lobby() {
   };
 
   const onEnterRoom = (code) => {
-    // 향후 개선: 엔트리 페이지로 이동 시 code 전달 (e.g. navigate(`/entry?code=${code}`))
-    navigate('/entry');
+    // 공개방 카드 클릭 시 해당 방으로 직접 이동
+    navigate(`/room/${code}`);
   };
 
   return (

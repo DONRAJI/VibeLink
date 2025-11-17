@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import SplashScreen from './components/SplashScreen/SplashScreen';
 import RoomEntry from './components/RoomEntry/RoomEntry';
 import RoomHeader from './components/RoomHeader/RoomHeader';
@@ -98,6 +98,7 @@ function App() {
   const handleRoomCreated = (code, hostNickname) => {
     setRoomCode(code);
     setNickname(hostNickname);
+    try { localStorage.setItem('nickname', hostNickname); } catch {}
     setIsHost(true);
     // --- [핵심 수정 2] --- 방 생성 시점에 수동으로 소켓 연결!
     socket.connect();
@@ -108,6 +109,7 @@ function App() {
   const handleRoomJoined = (code, userNickname) => {
     setRoomCode(code);
     setNickname(userNickname);
+    try { localStorage.setItem('nickname', userNickname); } catch {}
     setIsHost(false);
     // --- [핵심 수정 3] --- 방 참가 시점에 수동으로 소켓 연결!
     socket.connect();
@@ -142,26 +144,55 @@ function App() {
     socket.emit('chatMessage', { roomCode, user: nickname, message: text });
   };
 
+  // 방 경로 진입 시 roomCode가 비어있으면 자동 조인 지원
+  function RoomRouteWrapper() {
+    const { code } = useParams();
+    useEffect(() => {
+      if (!code) return;
+      if (!roomCode) {
+        let savedName = '';
+        try { savedName = localStorage.getItem('nickname') || ''; } catch {}
+        if (!savedName) {
+          // 간단 입력: prompt로 닉네임 수집 (추후 별도 UX로 대체 가능)
+          const input = window.prompt('닉네임을 입력하세요');
+          if (!input || input.trim().length < 2) {
+            // 닉네임이 없으면 로비로
+            return navigate('/lobby', { replace: true });
+          }
+          savedName = input.trim();
+          try { localStorage.setItem('nickname', savedName); } catch {}
+        }
+        setRoomCode(code);
+        setNickname(savedName);
+        setIsHost(false);
+        socket.connect();
+        socket.emit('joinRoom', { roomCode: code, nickname: savedName });
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [code, roomCode]);
+
+    if (!roomCode) {
+      return <div style={{ padding: 24 }}>방에 연결 중...</div>;
+    }
+    return (
+      <div className="app">
+        <div className="app-container">
+          <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
+          <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
+          <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
+          <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} forcedPlatform={roomPlatform} />
+          <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/" element={<SplashScreen onComplete={handleSplashComplete} />} />
       <Route path="/lobby" element={<Lobby />} />
       <Route path="/entry" element={<RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />} />
-      <Route path="/room/:code" element={
-        roomCode ? ( // roomCode가 있을 때만 방 렌더링 (안정성)
-          <div className="app">
-            <div className="app-container">
-              <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
-              <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
-              <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
-              <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} forcedPlatform={roomPlatform} />
-              <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
-            </div>
-          </div>
-        ) : (
-          <Navigate to="/lobby" replace /> // 방 정보 없으면 로비로 이동
-        )
-      } />
+      <Route path="/room/:code" element={<RoomRouteWrapper />} />
       <Route path="*" element={<Navigate to="/lobby" replace />} />
     </Routes>
   );

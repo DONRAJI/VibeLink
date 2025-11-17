@@ -66,8 +66,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
       addedBy: nickname,
     };
     onAddTrack(trackToAdd);
-    setSearchResults([]);
-    setSearchQuery('');
+    // 검색어와 결과는 유지하여 동일 검색으로 여러 곡 추가 가능
   }, [onAddTrack, platform, nickname]);
 
   const handleKeyPress = (e) => {

@@ -116,4 +116,21 @@ router.get('/:code', async (req, res) => {
   }
 });
 
+// 관리자용 방 초기화(전체 삭제) — 매우 위험, ADMIN_TOKEN 필요
+// 사용법: DELETE /api/rooms/admin/purge  Header: x-admin-token: <ADMIN_TOKEN>
+router.delete('/admin/purge', async (req, res) => {
+  try {
+    const token = req.header('x-admin-token');
+    const expected = process.env.ADMIN_TOKEN || '';
+    if (!expected || token !== expected) {
+      return res.status(403).json({ message: '권한 없음' });
+    }
+    const result = await Room.deleteMany({});
+    return res.json({ deleted: result.deletedCount || 0 });
+  } catch (e) {
+    console.error('관리자 방 초기화 오류:', e);
+    return res.status(500).json({ message: '방 초기화 실패' });
+  }
+});
+
 module.exports = router;
