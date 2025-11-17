@@ -21,6 +21,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const lastControlAtRef = useRef(0);
   const lastPlayAtRef = useRef(0);
   const volumeDebounceRef = useRef(null);
+  const endedTrackRef = useRef(null);
+  const lastPositionRef = useRef(0);
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -61,9 +63,24 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         setCurrentSdkTrack(state.track_window.current_track);
         setIsPaused(state.paused);
         setIsActive(true);
-        if (state.paused && state.position >= state.duration - 500 && onEnded && lastPlayedTrackRef.current) {
-          onEnded();
-        }
+        // --- 종료 감지 보강 ---
+        try {
+          const curId = state.track_window?.current_track?.id;
+          const dur = typeof state.duration === 'number' ? state.duration : (state.track_window?.current_track?.duration_ms || 0);
+          const pos = typeof state.position === 'number' ? state.position : 0;
+          const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 800);
+          const justResetToZero = state.paused && lastPositionRef.current > 1000 && pos === 0;
+          // 동일 트랙에 대해 한 번만 onEnded 호출
+          if (onEnded && lastPlayedTrackRef.current && curId === lastPlayedTrackRef.current) {
+            if ((state.paused && nearingEnd) || justResetToZero) {
+              if (endedTrackRef.current !== curId) {
+                endedTrackRef.current = curId;
+                onEnded();
+              }
+            }
+          }
+          lastPositionRef.current = pos;
+        } catch {}
       });
       spPlayer.connect().then(success => { if (success) setPlayer(spPlayer); });
     };
@@ -108,6 +125,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const trackUri = currentTrack.uri || `spotify:track:${id}`;
     if (lastPlayedTrackRef.current === id) return;
     lastPlayedTrackRef.current = id;
+    endedTrackRef.current = null; // 새 트랙에 대해 종료 플래그 초기화
     try { player?.activateElement && player.activateElement(); } catch {}
     const now = Date.now();
     if (playInFlightRef.current || (now - lastPlayAtRef.current) < 300) return;

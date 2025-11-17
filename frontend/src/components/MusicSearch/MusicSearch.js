@@ -8,13 +8,23 @@ const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000
 
 // --- [수정] --- forcedPlatform prop 받기
 const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
-  const restored = (() => {
+  const restoredQuery = (() => {
     try { return sessionStorage.getItem('searchQuery') || ''; } catch { return ''; }
   })();
-  const [searchQuery, setSearchQuery] = useState(restored);
-  const [searchResults, setSearchResults] = useState([]);
+  const initialPlatform = forcedPlatform || 'youtube';
+  const initialResults = (() => {
+    try {
+      const key = `searchResults:${initialPlatform}:${(restoredQuery || '').trim()}`;
+      const raw = sessionStorage.getItem(key);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  })();
+  const [searchQuery, setSearchQuery] = useState(restoredQuery);
+  const [searchResults, setSearchResults] = useState(initialResults);
   // --- [수정] --- 내부 platform 상태의 초기값을 forcedPlatform으로 설정
-  const [platform, setPlatform] = useState(forcedPlatform || 'youtube');
+  const [platform, setPlatform] = useState(initialPlatform);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSearchTime, setLastSearchTime] = useState(0);
@@ -23,6 +33,12 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
   useEffect(() => {
     if (forcedPlatform) {
       setPlatform(forcedPlatform);
+      // 플랫폼 변경 시 동일 쿼리에 대한 캐시된 결과가 있으면 복원
+      try {
+        const key = `searchResults:${forcedPlatform}:${(searchQuery || '').trim()}`;
+        const raw = sessionStorage.getItem(key);
+        if (raw) setSearchResults(JSON.parse(raw));
+      } catch {}
     }
   }, [forcedPlatform]);
 
@@ -51,6 +67,11 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
       // 이제 platform 상태는 forcedPlatform에 의해 올바르게 설정되어 있음
       const response = await axios.get(`${API_BASE_URL}/api/search?query=${encodeURIComponent(trimmedQuery)}&platform=${platform}`);
       setSearchResults(response.data);
+      // 결과를 세션에 캐시하여 리마운트/화면 전환 후에도 유지
+      try {
+        const key = `searchResults:${platform}:${trimmedQuery}`;
+        sessionStorage.setItem(key, JSON.stringify(response.data));
+      } catch {}
       if (response.data.length === 0) {
         setError('검색 결과가 없습니다.');
       }
@@ -70,6 +91,11 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     };
     onAddTrack(trackToAdd);
     // 검색어와 결과는 유지하여 동일 검색으로 여러 곡 추가 가능
+    // 혹시 부모 리렌더/리마운트로 사라질 경우를 대비해 현재 결과 재캐시
+    try {
+      const key = `searchResults:${platform}:${(searchQuery || '').trim()}`;
+      sessionStorage.setItem(key, JSON.stringify(searchResults || []));
+    } catch {}
   }, [onAddTrack, platform, nickname]);
 
   // 검색어 변경 시 세션 저장
