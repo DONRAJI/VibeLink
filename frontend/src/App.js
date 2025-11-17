@@ -173,7 +173,7 @@ function App() {
       if (!socket.connected) socket.connect();
       setRoomCode(code);
       setNickname(savedName);
-      setIsHost(false);
+      // isHost 값은 roomJoined 이벤트에서 결정되므로 여기서 강제로 false로 덮어쓰지 않음
       socket.emit('joinRoom', { roomCode: code, nickname: savedName });
       lastJoinRef.current = code;
     // eslint-disable-next-line react-hooks/exhaustive-deps

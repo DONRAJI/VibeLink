@@ -1,6 +1,6 @@
 // MusicSearch.js (전체 교체)
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './MusicSearch.css';
 
@@ -8,7 +8,10 @@ const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000
 
 // --- [수정] --- forcedPlatform prop 받기
 const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
-  const [searchQuery, setSearchQuery] = useState('');
+  const restored = (() => {
+    try { return sessionStorage.getItem('searchQuery') || ''; } catch { return ''; }
+  })();
+  const [searchQuery, setSearchQuery] = useState(restored);
   const [searchResults, setSearchResults] = useState([]);
   // --- [수정] --- 내부 platform 상태의 초기값을 forcedPlatform으로 설정
   const [platform, setPlatform] = useState(forcedPlatform || 'youtube');
@@ -68,6 +71,11 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     onAddTrack(trackToAdd);
     // 검색어와 결과는 유지하여 동일 검색으로 여러 곡 추가 가능
   }, [onAddTrack, platform, nickname]);
+
+  // 검색어 변경 시 세션 저장
+  useEffect(() => {
+    try { sessionStorage.setItem('searchQuery', searchQuery); } catch {}
+  }, [searchQuery]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
