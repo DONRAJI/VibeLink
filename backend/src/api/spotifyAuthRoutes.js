@@ -181,6 +181,23 @@ router.post('/transfer', async (req, res) => {
   }
 });
 
+// 디바이스 목록 조회 (진단용)
+router.get('/devices/:userId', async (req, res) => {
+  const { userId } = req.params;
+  const info = userTokens.get(userId);
+  if (!info) return res.status(404).json({ message: '인증 정보 없음' });
+  try {
+    // 기기 목록 가져오기
+    const devResp = await axios.get('https://api.spotify.com/v1/me/player/devices', {
+      headers: { 'Authorization': `Bearer ${info.accessToken}` }
+    });
+    res.json({ devices: devResp.data.devices || [] });
+  } catch (e) {
+    console.error('[spotify-oauth] devices fetch error', e.response?.status, e.response?.data || e.message);
+    res.status(e.response?.status || 500).json({ message: '디바이스 목록 조회 실패', detail: e.response?.data || e.message });
+  }
+});
+
 
 router.post('/play', async (req, res) => {
   const { userId, deviceId, trackUri } = req.body;
