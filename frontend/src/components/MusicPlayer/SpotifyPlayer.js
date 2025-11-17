@@ -16,6 +16,11 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const [volume, setVolume] = useState(50);
   const lastPlayedTrackRef = useRef(null);
   const initRef = useRef(false);
+  const controlInFlightRef = useRef(false);
+  const playInFlightRef = useRef(false);
+  const lastControlAtRef = useRef(0);
+  const lastPlayAtRef = useRef(0);
+  const volumeDebounceRef = useRef(null);
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -104,13 +109,18 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     if (lastPlayedTrackRef.current === id) return;
     lastPlayedTrackRef.current = id;
     try { player?.activateElement && player.activateElement(); } catch {}
+    const now = Date.now();
+    if (playInFlightRef.current || (now - lastPlayAtRef.current) < 300) return;
+    playInFlightRef.current = true;
+    lastPlayAtRef.current = now;
     fetch(`${API_BASE_URL}/api/spotify/play`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
     }).then(r => {
       if (!r.ok) console.warn('[SpotifyPlayer] play 실패 status=', r.status);
-    }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e));
+    }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e))
+      .finally(() => { playInFlightRef.current = false; });
   }, [currentTrack?.id, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
 
   // isPlaying 토글에 따른 pause/resume
@@ -119,11 +129,16 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
     const action = isPlaying ? 'resume' : 'pause';
+    const now = Date.now();
+    if (controlInFlightRef.current || (now - lastControlAtRef.current) < 250) return;
+    controlInFlightRef.current = true;
+    lastControlAtRef.current = now;
     fetch(`${API_BASE_URL}/api/spotify/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user.userId, deviceId, action })
-    }).catch(e => console.warn('[SpotifyPlayer] control 오류', action, e));
+    }).catch(e => console.warn('[SpotifyPlayer] control 오류', action, e))
+      .finally(() => { controlInFlightRef.current = false; });
   }, [isPlaying, isHost, deviceId, player, getStoredSpotifyUser]);
 
   const handlePlayPauseClick = () => {
@@ -141,20 +156,19 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   };
 
   const handleNext = () => {
-    const user = getStoredSpotifyUser();
-    if (!isHost || !user?.userId || !deviceId) return;
-    fetch(`${API_BASE_URL}/api/spotify/control`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, action: 'next' })
-    }).catch(()=>{});
+    // 내장 next 제어 제거: 앱 큐에 맞춰 다음 트랙만 재생
+    if (!isHost) return;
     onNext && onNext();
   };
 
-  const handleVolume = async (e) => {
+  const handleVolume = (e) => {
     const v = Number(e.target.value);
     setVolume(v);
-    try { await player?.setVolume(v / 100); } catch {}
+    if (!player) return;
+    if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current);
+    volumeDebounceRef.current = setTimeout(async () => {
+      try { await player.setVolume(v / 100); } catch {}
+    }, 200);
   };
 
   const track = currentSdkTrack || currentTrack;
