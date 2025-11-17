@@ -242,6 +242,26 @@ router.post('/play', async (req, res) => {
   }
 });
 
+// 재생 상태 조회 (진단용): 현재 디바이스/곡/재생 여부 확인
+router.get('/playback-state/:userId', async (req, res) => {
+  const { userId } = req.params;
+  let info = userTokens.get(userId);
+  if (!info) return res.status(404).json({ message: '인증 정보 없음' });
+  if (Date.now() > info.expiresAt - 15_000) {
+    info = await refreshUserToken(userId);
+    if (!info) return res.status(401).json({ message: '토큰 갱신 실패' });
+  }
+  try {
+    const resp = await axios.get('https://api.spotify.com/v1/me/player', {
+      headers: { 'Authorization': `Bearer ${info.accessToken}` }
+    });
+    res.json(resp.data || {});
+  } catch (e) {
+    console.error('[spotify-oauth] playback-state fetch error', e.response?.status, e.response?.data || e.message);
+    res.status(e.response?.status || 500).json({ message: '재생 상태 조회 실패', detail: e.response?.data || e.message });
+  }
+});
+
 router.post('/control', async (req, res) => {
   const { userId, deviceId, action } = req.body;
   if (!userId || !action) {

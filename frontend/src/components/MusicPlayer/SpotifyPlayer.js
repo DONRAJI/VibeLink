@@ -98,17 +98,22 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         await new Promise(r => setTimeout(r, attempt * 300));
         continue;
       }
-      const playResp = await fetch(`${API_BASE_URL}/api/spotify/play`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId: targetDeviceId, trackUri })
-      });
-      if (playResp.ok) {
-        console.log('[SpotifyPlayer][retryPlay] play success');
-        setNeedsActivation(false);
-        return true;
-      } else {
-        console.warn(`[SpotifyPlayer][retryPlay] play failed status=${playResp.status}`);
+      try {
+        const playResp = await fetch(`${API_BASE_URL}/api/spotify/play`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.userId, deviceId: targetDeviceId, trackUri })
+        });
+        if (playResp.ok) {
+          console.log('[SpotifyPlayer][retryPlay] play success');
+          setNeedsActivation(false);
+          return true;
+        } else {
+          const txt = await playResp.text().catch(() => '');
+          console.warn(`[SpotifyPlayer][retryPlay] play failed status=${playResp.status} body=${txt}`);
+        }
+      } catch (netErr) {
+        console.warn('[SpotifyPlayer][retryPlay] play fetch error', netErr);
       }
       await new Promise(r => setTimeout(r, attempt * 400));
     }
