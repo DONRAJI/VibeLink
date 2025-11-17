@@ -151,29 +151,51 @@ router.post('/transfer', async (req, res) => {
       }
     }
 
-    console.log('[DEBUG] /transfer - Calling Spotify API to transfer playback...');
-    await axios.put('https://api.spotify.com/v1/me/player',
-      { device_ids: [deviceId], play: false },
-      { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
-    );
-    
-    console.log('[DEBUG] /transfer - Spotify API call successful.');
-    res.status(204).send();
+    // 기기 목록 조회 후 대상 기기 존재 여부 확인
+    let devicesResp;
+    try {
+      devicesResp = await axios.get('https://api.spotify.com/v1/me/player/devices', {
+        headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` }
+      });
+    } catch (devErr) {
+      console.error('[DEBUG] /transfer - devices fetch failed', devErr.response?.status, devErr.response?.data || devErr.message);
+      return res.status(devErr.response?.status || 500).json({ message: '디바이스 목록 조회 실패', detail: devErr.response?.data || devErr.message });
+    }
+    const devices = devicesResp.data.devices || [];
+    const targetDevice = devices.find(d => d.id === deviceId);
+    if (!targetDevice) {
+      console.warn('[DEBUG] /transfer - target device id not found in devices list');
+      return res.status(404).json({ code: 'DEVICE_NOT_FOUND', message: '제공된 deviceId를 가진 디바이스를 찾을 수 없습니다.' });
+    }
+    console.log(`[DEBUG] /transfer - targetDevice active=${targetDevice.is_active}`);
 
+    console.log('[DEBUG] /transfer - Calling Spotify API to transfer playback...');
+    try {
+      await axios.put('https://api.spotify.com/v1/me/player',
+        { device_ids: [deviceId], play: false },
+        { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
+      );
+      console.log('[DEBUG] /transfer - Spotify API call successful.');
+      return res.status(204).send();
+    } catch (spotifyErr) {
+      const status = spotifyErr.response?.status;
+      const data = spotifyErr.response?.data;
+      console.error('[DEBUG] /transfer - Spotify transfer error', status, data || spotifyErr.message);
+      if (status === 404) {
+        return res.status(404).json({ code: 'NO_ACTIVE_DEVICE', message: '활성화된 Spotify 플레이어 컨텍스트가 없습니다. 먼저 재생을 시작하거나 다른 기기에서 곡을 재생하세요.' });
+      }
+      return res.status(status || 500).json({ message: 'Spotify 전송 실패', detail: data || spotifyErr.message });
+    }
   } catch (error) {
-    // --- [가장 중요] --- 에러의 모든 내용을 출력
-    console.error('--- ❌ [API-ERROR] /api/spotify/transfer ---');
+    console.error('--- ❌ [API-ERROR] /api/spotify/transfer (unhandled) ---');
     if (error.response) {
-      // Axios 에러 (Spotify API로부터 받은 에러)
       console.error('Data:', error.response.data);
       console.error('Status:', error.response.status);
       console.error('Headers:', error.response.headers);
       return res.status(error.response.status).json(error.response.data);
     } else if (error.request) {
-      // 요청은 보냈으나 응답을 받지 못함
       console.error('Request:', error.request);
     } else {
-      // 요청 설정 중 발생한 에러
       console.error('Error Message:', error.message);
     }
     console.error('Full Error Object:', error);
