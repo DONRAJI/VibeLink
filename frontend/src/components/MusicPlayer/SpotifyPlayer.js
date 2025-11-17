@@ -15,6 +15,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const [isActive, setIsActive] = useState(false);
   const [volume, setVolume] = useState(50);
   const lastPlayedTrackRef = useRef(null);
+  const initRef = useRef(false);
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -27,14 +28,12 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return data.accessToken;
   }, []);
 
-  // SDK 로드 및 초기화
+  // SDK 로드 및 초기화 (단일 인스턴스 보장)
   useEffect(() => {
     if (!isHost) return; // 호스트만 재생 장치 세팅
-    const script = document.createElement('script');
-    script.src = 'https://sdk.scdn.co/spotify-player.js';
-    script.async = true;
-    document.body.appendChild(script);
-    window.onSpotifyWebPlaybackSDKReady = async () => {
+    if (initRef.current) return; // 중복 초기화 방지 (StrictMode 등)
+
+    const initPlayer = async () => {
       const user = getStoredSpotifyUser();
       if (!user?.userId) return;
       let token;
@@ -57,32 +56,53 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         setCurrentSdkTrack(state.track_window.current_track);
         setIsPaused(state.paused);
         setIsActive(true);
-        // 트랙 종료 감지 (간단): 마지막 위치가 duration 근처 & paused
         if (state.paused && state.position >= state.duration - 500 && onEnded && lastPlayedTrackRef.current) {
           onEnded();
         }
       });
       spPlayer.connect().then(success => { if (success) setPlayer(spPlayer); });
     };
+
+    const existing = document.getElementById('spotify-player-js');
+    const start = () => { if (!initRef.current) { initRef.current = true; initPlayer(); } };
+
+    if (window.Spotify) {
+      start();
+    } else if (existing) {
+      window.onSpotifyWebPlaybackSDKReady = start;
+    } else {
+      const script = document.createElement('script');
+      script.id = 'spotify-player-js';
+      script.src = 'https://sdk.scdn.co/spotify-player.js';
+      script.async = true;
+      document.body.appendChild(script);
+      window.onSpotifyWebPlaybackSDKReady = start;
+    }
+
     return () => {
       try { player?.disconnect(); } catch {}
-      document.body.removeChild(script);
-      delete window.onSpotifyWebPlaybackSDKReady;
+      // 스크립트는 유지하여 다른 화면 이동 시 재사용 (중복 생성 방지)
     };
-  }, [isHost, fetchPlaybackToken, getStoredSpotifyUser, volume, player]);
+  }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
+
+  // 볼륨 변경 시 반영 (SDK 초기화와 분리)
+  useEffect(() => {
+    if (!player) return;
+    (async () => { try { await player.setVolume(volume / 100); } catch {} })();
+  }, [player, volume]);
 
   // 트랙 변경 시 재생 (한 번만 시도)
   useEffect(() => {
     if (!isHost) return;
-    if (!currentTrack || currentTrack.platform !== 'spotify') return;
+    const id = currentTrack?.id;
+    if (!id || currentTrack.platform !== 'spotify') return;
     if (!deviceId) return;
     if (!isPlaying) return; // 외부가 play 상태일 때만 시작
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
-    const trackUri = currentTrack.uri || `spotify:track:${currentTrack.id}`;
-    if (lastPlayedTrackRef.current === currentTrack.id) return;
-    lastPlayedTrackRef.current = currentTrack.id;
-    // 사용자 제스처 유도: activateElement 시도 (실패해도 무시)
+    const trackUri = currentTrack.uri || `spotify:track:${id}`;
+    if (lastPlayedTrackRef.current === id) return;
+    lastPlayedTrackRef.current = id;
     try { player?.activateElement && player.activateElement(); } catch {}
     fetch(`${API_BASE_URL}/api/spotify/play`, {
       method: 'POST',
@@ -91,7 +111,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     }).then(r => {
       if (!r.ok) console.warn('[SpotifyPlayer] play 실패 status=', r.status);
     }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e));
-  }, [currentTrack, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
+  }, [currentTrack?.id, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
 
   // isPlaying 토글에 따른 pause/resume
   useEffect(() => {
