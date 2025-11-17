@@ -149,27 +149,31 @@ function App() {
     const { code } = useParams();
     useEffect(() => {
       if (!code) return;
-      if (!roomCode) {
-        let savedName = '';
-        try { savedName = localStorage.getItem('nickname') || ''; } catch {}
-        if (!savedName) {
-          // 간단 입력: prompt로 닉네임 수집 (추후 별도 UX로 대체 가능)
-          const input = window.prompt('닉네임을 입력하세요');
-          if (!input || input.trim().length < 2) {
-            // 닉네임이 없으면 로비로
-            return navigate('/lobby', { replace: true });
-          }
-          savedName = input.trim();
-          try { localStorage.setItem('nickname', savedName); } catch {}
+      let savedName = '';
+      try { savedName = localStorage.getItem('nickname') || ''; } catch {}
+      if (!savedName) {
+        const input = window.prompt('닉네임을 입력하세요');
+        if (!input || input.trim().length < 2) {
+          return navigate('/lobby', { replace: true });
         }
-        setRoomCode(code);
-        setNickname(savedName);
-        setIsHost(false);
-        socket.connect();
-        socket.emit('joinRoom', { roomCode: code, nickname: savedName });
+        savedName = input.trim();
+        try { localStorage.setItem('nickname', savedName); } catch {}
       }
+      // 다른 방으로 이동하는 경우 이전 연결 정리 후 재접속
+      if (roomCode && roomCode !== code) {
+        try { socket.disconnect(); } catch {}
+        setCurrentTrack(null);
+        setIsPlaying(false);
+        setQueue([]);
+        setParticipants([]);
+      }
+      if (!socket.connected) socket.connect();
+      setRoomCode(code);
+      setNickname(savedName);
+      setIsHost(false);
+      socket.emit('joinRoom', { roomCode: code, nickname: savedName });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, roomCode]);
+    }, [code]);
 
     if (!roomCode) {
       return <div style={{ padding: 24 }}>방에 연결 중...</div>;

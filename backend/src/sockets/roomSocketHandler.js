@@ -132,33 +132,57 @@ class RoomSocketHandler {
       const room = await Room.findOne({ code });
       if (!room) return;
       const previousTrack = room.currentTrack ? { ...room.currentTrack } : null;
+      const persistent = room.playlistMode === 'persistent';
 
       if (action === 'play' && track) {
         room.currentTrack = track;
         room.isPlaying = true;
-        // 현재 트랙을 큐에서 제거 (플랫폼별 식별자 사용)
-        room.queue = room.queue.filter(t => {
-          if (track.platform === 'spotify') {
-            return !(t.platform === 'spotify' && t.id === track.id);
-          }
+        if (!persistent) {
+          room.queue = room.queue.filter(t => {
+            if (track.platform === 'spotify') {
+              return !(t.platform === 'spotify' && t.id === track.id);
+            }
             return !(t.platform === 'youtube' && t.videoId === track.videoId);
-        });
+          });
+        } else {
+          // persistent 모드: cursor를 현재 트랙 위치로 이동
+          const idx = room.queue.findIndex(t => (track.platform === 'spotify' ? t.id === track.id : t.videoId === track.videoId));
+          if (idx >= 0) room.playlistCursor = idx;
+        }
       } else if (action === 'pause') {
         room.isPlaying = false;
       } else if (action === 'next') {
-        if (room.queue.length > 0) {
-          room.currentTrack = room.queue[0];
-          room.queue = room.queue.slice(1);
-          room.isPlaying = true;
-        } else {
-          // 큐가 비었을 때 추천곡 1개 선택 (이전 트랙 기반)
-          const recommended = await this.recommendNext(previousTrack, room);
-          if (recommended) {
-            room.currentTrack = recommended;
+        if (!persistent) {
+          if (room.queue.length > 0) {
+            room.currentTrack = room.queue[0];
+            room.queue = room.queue.slice(1);
             room.isPlaying = true;
           } else {
+            const recommended = await this.recommendNext(previousTrack, room);
+            if (recommended) {
+              room.currentTrack = recommended;
+              room.isPlaying = true;
+            } else {
+              room.currentTrack = null;
+              room.isPlaying = false;
+            }
+          }
+        } else {
+          // persistent 모드: cursor 이동
+          if (room.queue.length === 0) {
             room.currentTrack = null;
             room.isPlaying = false;
+          } else {
+            let nextIndex = room.playlistCursor + 1;
+            if (nextIndex >= room.queue.length) {
+              // 끝에 도달: 재생 종료 (루프 가능하게 하려면 nextIndex=0 설정)
+              room.currentTrack = null;
+              room.isPlaying = false;
+            } else {
+              room.playlistCursor = nextIndex;
+              room.currentTrack = room.queue[nextIndex];
+              room.isPlaying = true;
+            }
           }
         }
       }
@@ -169,6 +193,9 @@ class RoomSocketHandler {
       console.log(`${code} 방에 '${action}' 컨트롤 요청`);
       this.io.to(code).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
       this.io.to(code).emit('queueUpdated', room.queue);
+      if (persistent) {
+        this.io.to(code).emit('playlistCursor', { cursor: room.playlistCursor, mode: room.playlistMode });
+      }
     } catch (error) {
       console.error('재생 제어 오류:', error);
     }

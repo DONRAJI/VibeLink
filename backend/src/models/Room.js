@@ -8,6 +8,8 @@ const roomSchema = new mongoose.Schema({
   visibility: { type: String, enum: ['public', 'private'], default: 'public' },
   tags: [{ type: String }],
   participants: [String],
+  playlistMode: { type: String, enum: ['ephemeral', 'persistent'], default: 'ephemeral' },
+  playlistCursor: { type: Number, default: 0 },
   // 통합 큐 스키마: YouTube 또는 Spotify 트랙을 저장
   queue: [{
     platform: { type: String, enum: ['youtube', 'spotify'], default: 'youtube' },

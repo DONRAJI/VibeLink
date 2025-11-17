@@ -53,7 +53,7 @@ router.get('/', async (req, res) => {
 // 방 생성 API
 router.post('/', async (req, res) => {
   try {
-    const { host, title, platform, visibility, tags, userId } = req.body || {};
+    const { host, title, platform, visibility, tags, userId, playlistMode } = req.body || {};
     if (!host || host.trim().length < 2 || host.trim().length > 20) {
       return res.status(400).json({ message: '유효한 호스트 이름을 입력해주세요 (2-20자).' });
     }
@@ -83,6 +83,7 @@ router.post('/', async (req, res) => {
       tags: Array.isArray(tags) ? tags.filter(t => typeof t === 'string' && t.trim()).slice(0, 10) : [],
       participants: [],
       queue: [],
+      playlistMode: playlistMode === 'persistent' ? 'persistent' : 'ephemeral',
       lastActivityAt: new Date(),
       createdAt: new Date(),
     });
