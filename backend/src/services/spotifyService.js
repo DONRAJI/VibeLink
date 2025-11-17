@@ -56,7 +56,7 @@ class SpotifyService {
    * @param {string} query 
    * @param {number} limit 
    */
-  async searchTracks(query, limit = 10) {
+  async searchTracks(query, limit = 10, offset = 0) {
     if (!query) throw new Error('검색어를 입력해주세요.');
     const token = await this.getAppToken();
 
@@ -65,14 +65,15 @@ class SpotifyService {
     try {
       resp = await axios.get('https://api.spotify.com/v1/search', {
         headers: { Authorization: `Bearer ${token}` },
-        params: { q: query, type: 'track', limit }
+        params: { q: query, type: 'track', limit, offset }
       });
     } catch (e) {
       console.error('[spotify] search failed', e.response?.status, e.response?.data || e.message);
       throw e;
     }
 
-    const items = (resp.data?.tracks?.items || []).map(track => ({
+    const tracks = resp.data?.tracks || { items: [], total: 0, limit, offset };
+    const items = (tracks.items || []).map(track => ({
       id: track.id,
       title: track.name,
       artists: (track.artists || []).map(a => a.name).join(', '),
@@ -84,7 +85,14 @@ class SpotifyService {
       platform: 'spotify'
     }));
 
-    return items;
+    const total = typeof tracks.total === 'number' ? tracks.total : 0;
+    const limitOut = typeof tracks.limit === 'number' ? tracks.limit : limit;
+    const offsetOut = typeof tracks.offset === 'number' ? tracks.offset : offset;
+
+    return {
+      items,
+      page: { total, limit: limitOut, offset: offsetOut }
+    };
   }
 
   /**

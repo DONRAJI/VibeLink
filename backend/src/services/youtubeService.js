@@ -6,7 +6,7 @@ class YouTubeService {
     this.baseUrl = 'https://www.googleapis.com/youtube/v3';
   }
 
-  async searchVideos(query, maxResults = 10) {
+  async searchVideos(query, maxResults = 10, pageToken) {
     try {
       if (!this.apiKey) {
         throw new Error('YouTube API 키가 설정되지 않았습니다.');
@@ -24,13 +24,13 @@ class YouTubeService {
           q: query,
           type: 'video',
           maxResults,
+          pageToken,
           key: this.apiKey,
         },
       });
 
       console.log('YouTube API로부터 응답을 성공적으로 받았습니다!');
-
-      return response.data.items.map(item => ({
+      const items = response.data.items.map(item => ({
         videoId: item.id.videoId,
         title: item.snippet.title,
         thumbnailUrl: item.snippet.thumbnails.default.url,
@@ -38,6 +38,12 @@ class YouTubeService {
         channelTitle: item.snippet.channelTitle,
         publishedAt: item.snippet.publishedAt,
       }));
+
+      return {
+        items,
+        nextPageToken: response.data.nextPageToken || null,
+        prevPageToken: response.data.prevPageToken || null,
+      };
     } catch (error) {
       console.error('YouTube 검색 중 오류 발생:', error.message);
       throw error;
