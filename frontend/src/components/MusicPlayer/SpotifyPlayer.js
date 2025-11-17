@@ -23,6 +23,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const volumeDebounceRef = useRef(null);
   const endedTrackRef = useRef(null);
   const lastPositionRef = useRef(0);
+  const ensurePlayAbortRef = useRef({ aborted: false });
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -104,6 +105,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return () => {
       try { player?.disconnect(); } catch {}
       // 스크립트는 유지하여 다른 화면 이동 시 재사용 (중복 생성 방지)
+      ensurePlayAbortRef.current.aborted = true;
     };
   }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
 
@@ -139,6 +141,50 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       if (!r.ok) console.warn('[SpotifyPlayer] play 실패 status=', r.status);
     }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e))
       .finally(() => { playInFlightRef.current = false; });
+
+    // 재생 보장: 상태 폴링 + 필요 시 transfer/resume/재시도
+    ensurePlayAbortRef.current.aborted = false;
+    const ensurePlayback = async () => {
+      const abortObj = ensurePlayAbortRef.current;
+      const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+      let attempts = 0;
+      while (!abortObj.aborted && attempts < 4) {
+        attempts++;
+        await sleep(attempts === 1 ? 700 : 1000);
+        try {
+          const st = await fetch(`${API_BASE_URL}/api/spotify/playback-state/${user.userId}`);
+          if (!st.ok) continue;
+          const data = await st.json();
+          const activeDevId = data?.device?.id;
+          const isPlayingFlag = !!data?.is_playing;
+          const currentId = data?.item?.id;
+          if (activeDevId === deviceId && isPlayingFlag && currentId === id) {
+            return; // 성공
+          }
+          // 기기 활성화/전송 보정
+          if (activeDevId !== deviceId) {
+            await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.userId, deviceId })
+            }).catch(()=>{});
+            await sleep(400);
+          }
+          // 재개 및 재생 재시도
+          await fetch(`${API_BASE_URL}/api/spotify/control`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.userId, deviceId, action: 'resume' })
+          }).catch(()=>{});
+          await sleep(200);
+          await fetch(`${API_BASE_URL}/api/spotify/play`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+          }).catch(()=>{});
+        } catch (e) {
+          // 무시하고 재시도
+        }
+      }
+    };
+    ensurePlayback();
   }, [currentTrack?.id, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
 
   // isPlaying 토글에 따른 pause/resume
