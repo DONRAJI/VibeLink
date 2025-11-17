@@ -126,25 +126,60 @@ router.get('/playback/:userId', async (req, res) => {
 });
 
 router.post('/transfer', async (req, res) => {
-  const { userId, deviceId } = req.body;
-  if (!userId || !deviceId) return res.status(400).json({ message: '필수 정보 누락' });
+  console.log('--- [API-IN] POST /api/spotify/transfer ---');
   try {
-    let tokenInfo = userTokens.get(userId);
-    if (!tokenInfo) return res.status(404).json({ message: '인증 정보 없음' });
-    if (Date.now() > tokenInfo.expiresAt - 15_000) {
-      tokenInfo = await refreshUserToken(userId);
-      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신 실패' });
+    const { userId, deviceId } = req.body;
+    console.log(`[DEBUG] /transfer - Received userId: ${userId}, deviceId: ${deviceId}`);
+
+    if (!userId || !deviceId) {
+      console.error('[DEBUG] /transfer - Bad Request: Missing userId or deviceId.');
+      return res.status(400).json({ message: '필수 정보 누락' });
     }
+
+    let tokenInfo = userTokens.get(userId);
+    console.log(`[DEBUG] /transfer - Found token info in store: ${tokenInfo ? 'Yes' : 'No'}`);
+    if (!tokenInfo) {
+      return res.status(404).json({ message: '인증 정보 없음' });
+    }
+
+    if (Date.now() > tokenInfo.expiresAt - 15_000) {
+      console.log('[DEBUG] /transfer - Token expired or expiring soon. Refreshing...');
+      tokenInfo = await refreshUserToken(userId);
+      if (!tokenInfo) {
+        console.error('[DEBUG] /transfer - Token refresh failed.');
+        return res.status(401).json({ message: '토큰 갱신 실패' });
+      }
+    }
+
+    console.log('[DEBUG] /transfer - Calling Spotify API to transfer playback...');
     await axios.put('https://api.spotify.com/v1/me/player',
       { device_ids: [deviceId], play: false },
       { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
     );
+    
+    console.log('[DEBUG] /transfer - Spotify API call successful.');
     res.status(204).send();
+
   } catch (error) {
-    console.error('Spotify 장치 활성화 실패:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ message: '장치 활성화 실패' });
+    // --- [가장 중요] --- 에러의 모든 내용을 출력
+    console.error('--- ❌ [API-ERROR] /api/spotify/transfer ---');
+    if (error.response) {
+      // Axios 에러 (Spotify API로부터 받은 에러)
+      console.error('Data:', error.response.data);
+      console.error('Status:', error.response.status);
+      console.error('Headers:', error.response.headers);
+    } else if (error.request) {
+      // 요청은 보냈으나 응답을 받지 못함
+      console.error('Request:', error.request);
+    } else {
+      // 요청 설정 중 발생한 에러
+      console.error('Error Message:', error.message);
+    }
+    console.error('Full Error Object:', error);
+    res.status(500).json({ message: '장치 활성화 중 서버 내부 오류 발생' });
   }
 });
+
 
 router.post('/play', async (req, res) => {
   const { userId, deviceId, trackUri } = req.body;
