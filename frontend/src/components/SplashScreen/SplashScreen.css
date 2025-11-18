@@ -28,6 +28,8 @@
 .logo-container {
   margin-bottom: 2rem;
   isolation: isolate;
+  /* 애니메이션을 위한 컨테이너 설정 */
+  position: relative;
 }
 
 .logo-placeholder {
@@ -43,8 +45,8 @@
 }
 
 .logo-image {
-  width: 100%;
-  height: 100%;
+  width: 120%;
+  height: 120%;
   object-fit: contain;
   display: block;
   mix-blend-mode: multiply;

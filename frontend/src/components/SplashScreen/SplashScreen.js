@@ -3,15 +3,16 @@ import './SplashScreen.css';
 
 const SplashScreen = ({ onComplete }) => {
   const [isVisible, setIsVisible] = useState(true);
-  const logoSrc = process.env.REACT_APP_LOGO_URL || (process.env.PUBLIC_URL ? process.env.PUBLIC_URL + '/VibeLink.png' : '/VibeLink.png');
+  const logoSrc = process.env.REACT_APP_LOGO_URL || (process.env.PUBLIC_URL ? process.env.PUBLIC_URL + '/VibeLink1.png' : '/VibeLink1.png');
 
   useEffect(() => {
+    // 총 애니메이션 시간(3.5초) + 추가 대기 시간을 고려하여 타이머 설정
     const timer = setTimeout(() => {
       setIsVisible(false);
       setTimeout(() => {
         onComplete();
-      }, 500);
-    }, 2000);
+      }, 500); // fade-out 시간
+    }, 4000); // 3500ms(애니메이션) + 500ms(대기)
 
     return () => clearTimeout(timer);
   }, [onComplete]);
@@ -21,6 +22,7 @@ const SplashScreen = ({ onComplete }) => {
       <div className="splash-content">
         <div className="logo-container">
           <div className="logo-placeholder">
+            {/* 4번째 이미지를 기본 로고로 사용 */}
             <img src={logoSrc} alt="VibeLink Logo" className="logo-image" />
           </div>
         </div>
