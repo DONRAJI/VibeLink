@@ -9,10 +9,17 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
   // 검색어 복원
   const restoredQuery = (() => { try { return sessionStorage.getItem('searchQuery') || ''; } catch { return ''; } })();
   const initialPlatform = forcedPlatform || 'youtube';
-  // 1페이지 캐시 복원 (방/플랫폼/쿼리 기준)
+  const restoredPageIndex = (() => {
+    try {
+      const key = `searchPageIndex:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}`;
+      const raw = sessionStorage.getItem(key);
+      const n = parseInt(raw || '1', 10);
+      return isNaN(n) || n < 1 ? 1 : n;
+    } catch { return 1; }
+  })();
   const initialResults = (() => {
     try {
-      const key = `searchResults:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}:1`;
+      const key = `searchResults:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}:${restoredPageIndex}`;
       const raw = sessionStorage.getItem(key);
       return raw ? JSON.parse(raw) : [];
     } catch { return []; }
@@ -24,12 +31,31 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [lastSearchTime, setLastSearchTime] = useState(0);
-  const [pageIndex, setPageIndex] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrev, setHasPrev] = useState(false);
+  const [pageIndex, setPageIndex] = useState(restoredPageIndex);
+  const [hasNext, setHasNext] = useState(() => {
+    try {
+      const key = `searchPaging:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}:${restoredPageIndex}`;
+      const raw = sessionStorage.getItem(key);
+      return raw ? !!(JSON.parse(raw)?.hasNext) : false;
+    } catch { return false; }
+  });
+  const [hasPrev, setHasPrev] = useState(() => {
+    try {
+      const key = `searchPaging:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}:${restoredPageIndex}`;
+      const raw = sessionStorage.getItem(key);
+      return raw ? !!(JSON.parse(raw)?.hasPrev) : false;
+    } catch { return false; }
+  });
 
   const pageCacheRef = useRef({ 1: initialResults }); // { page: items[] }
-  const ytTokensRef = useRef({ 1: { next: null, prev: null } }); // YouTube page tokens
+  const ytTokensRef = useRef((() => {
+    try {
+      const k = `ytTokens:${currentRoom || 'no-room'}:${initialPlatform}:${(restoredQuery || '').trim()}:${restoredPageIndex}`;
+      const raw = sessionStorage.getItem(k);
+      const obj = raw ? JSON.parse(raw) : { next: null, prev: null };
+      return { [restoredPageIndex]: obj };
+    } catch { return { 1: { next: null, prev: null } }; }
+  })());
 
   // 플랫폼 강제 변경 시 캐시 복원 시도
   useEffect(() => {
@@ -86,15 +112,21 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
       const paging = resp.data?.paging || {};
       setSearchResults(items);
       pageCacheRef.current[1] = items;
-      setHasNext(!!paging.hasNext);
-      setHasPrev(!!paging.hasPrev);
+      const nextFlag = !!paging.hasNext;
+      const prevFlag = !!paging.hasPrev;
+      setHasNext(nextFlag);
+      setHasPrev(prevFlag);
       if (platform === 'youtube') {
         ytTokensRef.current[1] = { next: paging.pageToken?.next || null, prev: paging.pageToken?.prev || null };
       }
       try {
-        const key = `searchResults:${currentRoom || 'no-room'}:${platform}:${trimmed}:1`;
-        sessionStorage.setItem(key, JSON.stringify(items));
+        sessionStorage.setItem(`searchResults:${currentRoom || 'no-room'}:${platform}:${trimmed}:1`, JSON.stringify(items));
+        sessionStorage.setItem(`searchPaging:${currentRoom || 'no-room'}:${platform}:${trimmed}:1`, JSON.stringify({ hasNext: nextFlag, hasPrev: prevFlag }));
+        if (platform === 'youtube') {
+          sessionStorage.setItem(`ytTokens:${currentRoom || 'no-room'}:${platform}:${trimmed}:1`, JSON.stringify(ytTokensRef.current[1]));
+        }
         sessionStorage.setItem('searchQuery', searchQuery);
+        sessionStorage.setItem(`searchPageIndex:${currentRoom || 'no-room'}:${platform}:${trimmed}`, '1');
       } catch {}
       if (items.length === 0) setError('검색 결과가 없습니다.');
     } catch (err) {
@@ -118,11 +150,15 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
         pageCacheRef.current[target] = items;
         setSearchResults(items);
         setPageIndex(target);
-        setHasNext(!!paging.hasNext);
-        setHasPrev(!!paging.hasPrev);
+        const nextFlag = !!paging.hasNext;
+        const prevFlag = !!paging.hasPrev;
+        setHasNext(nextFlag);
+        setHasPrev(prevFlag);
         try {
-          const key = `searchResults:${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}:${target}`;
-          sessionStorage.setItem(key, JSON.stringify(items));
+          const base = `${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}`;
+          sessionStorage.setItem(`searchResults:${base}:${target}`, JSON.stringify(items));
+          sessionStorage.setItem(`searchPaging:${base}:${target}`, JSON.stringify({ hasNext: nextFlag, hasPrev: prevFlag }));
+          sessionStorage.setItem(`searchPageIndex:${base}`, String(target));
         } catch {}
       } catch (err) {
         setError(err.response?.data?.message || '검색 중 오류 발생');
@@ -145,11 +181,16 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
       ytTokensRef.current[target] = { next: paging.pageToken?.next || null, prev: paging.pageToken?.prev || null };
       setSearchResults(items);
       setPageIndex(target);
-      setHasNext(!!paging.hasNext);
-      setHasPrev(!!paging.hasPrev);
+      const nextFlag = !!paging.hasNext;
+      const prevFlag = !!paging.hasPrev;
+      setHasNext(nextFlag);
+      setHasPrev(prevFlag);
       try {
-        const key = `searchResults:${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}:${target}`;
-        sessionStorage.setItem(key, JSON.stringify(items));
+        const base = `${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}`;
+        sessionStorage.setItem(`searchResults:${base}:${target}`, JSON.stringify(items));
+        sessionStorage.setItem(`searchPaging:${base}:${target}`, JSON.stringify({ hasNext: nextFlag, hasPrev: prevFlag }));
+        sessionStorage.setItem(`ytTokens:${base}:${target}`, JSON.stringify(ytTokensRef.current[target]));
+        sessionStorage.setItem(`searchPageIndex:${base}`, String(target));
       } catch {}
     } catch (err) {
       setError(err.response?.data?.message || '검색 중 오류 발생');
@@ -161,8 +202,9 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     const trackToAdd = { ...track, platform, addedBy: nickname };
     onAddTrack(trackToAdd);
     try {
-      const key = `searchResults:${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}:${pageIndex}`;
-      sessionStorage.setItem(key, JSON.stringify(searchResults || []));
+      const base = `${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}`;
+      sessionStorage.setItem(`searchResults:${base}:${pageIndex}`, JSON.stringify(searchResults || []));
+      sessionStorage.setItem(`searchPageIndex:${base}`, String(pageIndex));
     } catch {}
   }, [onAddTrack, platform, nickname, currentRoom, searchQuery, pageIndex, searchResults]);
 

@@ -90,6 +90,12 @@
   transform: translateX(4px);
 }
 
+.queue-item.active {
+  background: #eef2ff;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.2) inset;
+}
+
 .track-info {
   display: flex;
   align-items: center;

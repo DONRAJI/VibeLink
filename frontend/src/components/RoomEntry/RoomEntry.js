@@ -16,6 +16,7 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
 
   const [roomPlatform, setRoomPlatform] = useState('youtube');
   const [visibility, setVisibility] = useState('public');
+  const [playlistMode, setPlaylistMode] = useState('ephemeral');
   
   const [spotifyUser, setSpotifyUser] = useState(null);
   // --- [추가] --- 인증 상태를 더 상세하게 관리 (loading, success, error, none)
@@ -104,7 +105,7 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
     setIsCreating(true);
     setError('');
     try {
-      const payload = { host: trimmedNickname, title: trimmedTitle, platform: roomPlatform, visibility: visibility, userId: spotifyUser?.userId };
+      const payload = { host: trimmedNickname, title: trimmedTitle, platform: roomPlatform, visibility: visibility, userId: spotifyUser?.userId, playlistMode };
       const response = await axios.post(`${API_BASE_URL}/api/rooms`, payload);
       onRoomCreated(response.data.roomCode, trimmedNickname);
     } catch (error) {
@@ -184,6 +185,13 @@ const RoomEntry = ({ onRoomJoined, onRoomCreated }) => {
               </button>
             </div>
             {renderSpotifyAuthStatus()}
+          </div>
+          <div className="input-group">
+            <label>플레이리스트 모드</label>
+            <div className="button-group">
+              <button type="button" className={`btn ${playlistMode === 'ephemeral' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setPlaylistMode('ephemeral')}>Ephemeral</button>
+              <button type="button" className={`btn ${playlistMode === 'persistent' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setPlaylistMode('persistent')}>Persistent</button>
+            </div>
           </div>
           <div className="input-group">
             <label>공개 여부</label>

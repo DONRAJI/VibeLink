@@ -31,6 +31,8 @@ function App() {
   const [queue, setQueue] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
   const [roomPlatform, setRoomPlatform] = useState('youtube');
+  const [playlistMode, setPlaylistMode] = useState('ephemeral');
+  const [playlistCursor, setPlaylistCursor] = useState(0);
 
   useEffect(() => {
     socket.on('connect', () => console.log('✅ 서버 연결:', socket.id));
@@ -47,6 +49,8 @@ function App() {
       setIsHost(room.host === nickname);
       setChatMessages(room.chatMessages || []); // 채팅 기록도 roomJoined에서 받도록 수정
       if (room.platform) setRoomPlatform(room.platform);
+      if (room.playlistMode) setPlaylistMode(room.playlistMode);
+      if (typeof room.playlistCursor === 'number') setPlaylistCursor(room.playlistCursor);
     });
 
     socket.on('roomError', (err) => alert(err.message));
@@ -71,6 +75,10 @@ function App() {
       if (typeof newIsPlaying === 'boolean') setIsPlaying(newIsPlaying);
     });
     socket.on('participantsUpdated', (p) => setParticipants(p));
+    socket.on('playlistCursor', (data) => {
+      if (data?.mode) setPlaylistMode(data.mode);
+      if (typeof data?.cursor === 'number') setPlaylistCursor(data.cursor);
+    });
 
     socket.on('chatHistory', (history) => setChatMessages(history || []));
     socket.on('newChatMessage', (entry) => setChatMessages(prev => [...prev, entry]));
@@ -85,6 +93,7 @@ function App() {
       socket.off('queueUpdated');
       socket.off('playbackControlled');
       socket.off('participantsUpdated');
+      socket.off('playlistCursor');
       socket.off('chatHistory');
       socket.off('newChatMessage');
     };
@@ -187,7 +196,7 @@ function App() {
         <div className="app-container">
           <RoomHeader roomCode={roomCode} nickname={nickname} participants={participants} isHost={isHost} onLeaveRoom={handleLeaveRoom} />
           <MusicPlayer currentTrack={currentTrack} isPlaying={isPlaying} onPlayPause={handlePlayPause} onNext={handleNextTrack} onEnded={handleTrackEnded} isHost={isHost} />
-          <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} />
+          <PlaylistQueue queue={queue} currentTrack={currentTrack} onPlayTrack={handlePlayTrack} onVoteTrack={handleVoteTrack} isHost={isHost} playlistMode={playlistMode} playlistCursor={playlistCursor} />
           <MusicSearch onAddTrack={handleAddTrack} currentRoom={roomCode} nickname={nickname} forcedPlatform={roomPlatform} />
           <ChatWindow roomCode={roomCode} nickname={nickname} messages={chatMessages} onSendMessage={handleSendMessage} />
         </div>

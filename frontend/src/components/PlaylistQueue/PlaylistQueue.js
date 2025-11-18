@@ -1,7 +1,7 @@
 import React from 'react';
 import './PlaylistQueue.css';
 
-const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }) => {
+const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost, playlistMode, playlistCursor }) => {
   const handleVote = (videoId, voteType, event) => {
     // 사용자 피드백 개선
     if (event && event.target) {
@@ -55,7 +55,7 @@ const PlaylistQueue = ({ queue, currentTrack, onPlayTrack, onVoteTrack, isHost }
       
       <div className="queue-list">
         {queue.map((track, index) => (
-          <div key={track.id || track.videoId} className="queue-item">
+          <div key={track.id || track.videoId} className={`queue-item${playlistMode === 'persistent' && index === playlistCursor ? ' active' : ''}`}>
             <div className="track-info">
               <div className="track-number">{index + 1}</div>
               <img 
