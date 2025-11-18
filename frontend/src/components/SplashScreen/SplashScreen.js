@@ -3,6 +3,7 @@ import './SplashScreen.css';
 
 const SplashScreen = ({ onComplete }) => {
   const [isVisible, setIsVisible] = useState(true);
+  const logoSrc = process.env.REACT_APP_LOGO_URL || (process.env.PUBLIC_URL ? process.env.PUBLIC_URL + '/VibeLink.png' : '/VibeLink.png');
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -20,7 +21,7 @@ const SplashScreen = ({ onComplete }) => {
       <div className="splash-content">
         <div className="logo-container">
           <div className="logo-placeholder">
-            🎵
+            <img src={logoSrc} alt="VibeLink Logo" className="logo-image" />
           </div>
         </div>
         <h1 className="app-title">VibeLink</h1>
