@@ -4,7 +4,6 @@
 
 ![VibeLink Logo](https://via.placeholder.com/800x200/4A90E2/FFFFFF?text=VibeLink+-+Music+Together)
 
-> 이 문서는 "개요 / 구조 / 아키텍처 / 사용법"만 다룹니다. 설치 과정, 환경 변수 설정 등 운영 세부 내용은 의도적으로 제외했습니다.
 
 ## ✨ 주요 기능 개요
 
