@@ -73,15 +73,20 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     setPageIndex(1);
   }, [forcedPlatform, currentRoom, searchQuery]);
 
-  // 방 변경 시 초기화
+  // 방 변경 시 초기화 (Ref를 사용하여 실제 변경 시에만 초기화)
+  const prevRoomRef = useRef(currentRoom);
   useEffect(() => {
-    pageCacheRef.current = { 1: [] };
-    ytTokensRef.current = { 1: { next: null, prev: null } };
-    setSearchResults([]);
-    setPageIndex(1);
-    setHasNext(false);
-    setHasPrev(false);
-    // 검색어는 유지 (사용자 편의) 필요 시 제거 가능
+    // 마운트 시점에는 실행하지 않음 (복원된 데이터 유지)
+    // 단, 마운트 시점에 currentRoom이 이전과 다르다면(그럴 일은 드물지만) 초기화
+    if (prevRoomRef.current !== currentRoom) {
+      pageCacheRef.current = { 1: [] };
+      ytTokensRef.current = { 1: { next: null, prev: null } };
+      setSearchResults([]);
+      setPageIndex(1);
+      setHasNext(false);
+      setHasPrev(false);
+      prevRoomRef.current = currentRoom;
+    }
   }, [currentRoom]);
 
   // 검색 실행

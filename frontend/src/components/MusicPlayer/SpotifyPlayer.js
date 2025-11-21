@@ -1,5 +1,3 @@
-
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 // 단순화된 SpotifyPlayer: 최소 SDK 연결 + 재생/일시정지/다음/이전
@@ -199,14 +197,20 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e))
       .finally(() => { playInFlightRef.current = false; });
 
+    // 재생 보장: 상태 폴링 + 필요 시 transfer/resume/재시도
     ensurePlayAbortRef.current.aborted = false;
     const ensurePlayback = async () => {
       const abortObj = ensurePlayAbortRef.current;
       const sleep = (ms) => new Promise(res => setTimeout(res, ms));
       let attempts = 0;
-      while (!abortObj.aborted && attempts < 5) { // 4 -> 5회
+      while (!abortObj.aborted && attempts < 5) {
         attempts++;
-        await sleep(attempts === 1 ? 1000 : 1500); // 대기 시간 증가
+        // 첫 시도 대기 시간 증가 (Spotify API 반영 지연 고려)
+        await sleep(attempts === 1 ? 1500 : 2000);
+
+        // 사용자가 일시정지했으면 중단
+        if (!isPlaying) return;
+
         try {
           const st = await fetch(`${API_BASE_URL}/api/spotify/playback-state/${user.userId}`);
           if (!st.ok) continue;
@@ -214,15 +218,18 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           const activeDevId = data?.device?.id;
           const isPlayingFlag = !!data?.is_playing;
           const currentId = data?.item?.id;
+          const currentUri = data?.item?.uri;
 
-          // 이미 잘 재생 중이면 종료
-          if (activeDevId === deviceId && isPlayingFlag && currentId === id) {
-            return;
+          // 이미 잘 재생 중이면 종료 (ID 또는 URI 일치)
+          // 주의: Linked Track의 경우 ID가 다를 수 있으므로 URI도 확인
+          if (activeDevId === deviceId && isPlayingFlag) {
+            if (currentId === id || currentUri === trackUri) {
+              return; // 성공
+            }
           }
 
-          // 다른 기기에서 재생 중이거나 멈춰있으면 전송/재생
+          // 기기 활성화/전송 보정
           if (activeDevId !== deviceId) {
-            // 전송 시도
             await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ userId: user.userId, deviceId })
@@ -230,14 +237,16 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             await sleep(500);
           }
 
-          // 다시 재생 요청
+          // 다시 재생 요청 (재생 중이 아니거나 엉뚱한 곡인 경우)
+          // 단, 이미 재생 중인데 ID가 다른 경우(Autoplay 등)는 신중해야 함
+          // 여기서는 우리가 원하는 곡(trackUri)을 강제함
           await fetch(`${API_BASE_URL}/api/spotify/play`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
           }).catch(() => { });
 
         } catch (e) {
-          // 무시
+          // 무시하고 재시도
         }
       }
     };
