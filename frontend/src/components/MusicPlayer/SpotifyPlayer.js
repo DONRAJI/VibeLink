@@ -145,23 +145,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const trackId = currentTrack.id;
     const trackUri = currentTrack.uri || `spotify:track:${trackId}`;
 
-    // If we are already playing this track, just ensure play/pause state matches
+    // Prevent duplicate play requests for the same track
     if (lastPlayedTrackIdRef.current === trackId) {
-      if (isPlaying && isPaused) {
-        // Resume
-        fetch(`${API_BASE_URL}/api/spotify/control`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.userId, deviceId, action: 'resume' })
-        }).catch(console.error);
-      } else if (!isPlaying && !isPaused) {
-        // Pause
-        fetch(`${API_BASE_URL}/api/spotify/control`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.userId, deviceId, action: 'pause' })
-        }).catch(console.error);
-      }
       return;
     }
 
@@ -184,8 +169,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       }).catch(console.error);
     }
 
-  }, [currentTrack, isPlaying, isHost, deviceId, isPaused, getStoredSpotifyUser]);
-
+  }, [currentTrack?.id, isHost, deviceId, getStoredSpotifyUser]); // Removed isPlaying from deps to avoid re-triggering on pause/play toggle
 
   // 3. Volume Control
   useEffect(() => {
@@ -207,18 +191,46 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   }, [player, isPaused, isSeeking]);
 
 
-  // Handlers
-  const handlePlayPauseClick = () => onPlayPause && onPlayPause();
-  const handlePrev = () => {
+  // Handlers - Direct API Calls for Immediate Response
+  const handlePlayPauseClick = async () => {
+    if (!isHost) return;
+    // Optimistic UI update (optional, but good for responsiveness)
+    // But here we rely on props from parent, so we just call the handler
+    onPlayPause && onPlayPause();
+
+    const user = getStoredSpotifyUser();
+    if (!user?.userId || !deviceId) return;
+
+    const action = isPaused ? 'resume' : 'pause'; // Toggle based on current local state
+    console.log(`[SpotifyPlayer] Manual Control: ${action}`);
+
+    try {
+      await fetch(`${API_BASE_URL}/api/spotify/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.userId, deviceId, action })
+      });
+    } catch (e) {
+      console.error('[SpotifyPlayer] Control failed', e);
+    }
+  };
+
+  const handlePrev = async () => {
     const user = getStoredSpotifyUser();
     if (!isHost || !user?.userId || !deviceId) return;
-    fetch(`${API_BASE_URL}/api/spotify/control`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, action: 'previous' })
-    }).catch(() => { });
+    try {
+      await fetch(`${API_BASE_URL}/api/spotify/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.userId, deviceId, action: 'previous' })
+      });
+    } catch (e) { console.error(e); }
   };
-  const handleNext = () => onNext && onNext();
+
+  const handleNext = () => {
+    if (!isHost) return;
+    onNext && onNext();
+  };
 
   const handleVolume = (e) => {
     const v = Number(e.target.value);
