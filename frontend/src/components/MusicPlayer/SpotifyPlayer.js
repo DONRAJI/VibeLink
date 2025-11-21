@@ -1,5 +1,3 @@
-// src/components/SpotifyPlayer.js (전체 코드)
-
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 // 단순화된 SpotifyPlayer: 최소 SDK 연결 + 재생/일시정지/다음/이전
@@ -23,6 +21,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const volumeDebounceRef = useRef(null);
   const endedTrackRef = useRef(null);
   const lastPositionRef = useRef(0);
+  const lastSdkTrackIdRef = useRef(null); // Added for track change detection
   const ensurePlayAbortRef = useRef({ aborted: false });
 
   const getStoredSpotifyUser = useCallback(() => {
@@ -59,30 +58,58 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       spPlayer.addListener('not_ready', ({ device_id }) => {
         console.log('[SpotifyPlayer] Device offline', device_id);
       });
+
       spPlayer.addListener('player_state_changed', (state) => {
         if (!state) { setIsActive(false); return; }
+        const currentTrackId = state.track_window?.current_track?.id;
         setCurrentSdkTrack(state.track_window.current_track);
         setIsPaused(state.paused);
         setIsActive(true);
+
         // --- 종료 감지 보강 ---
         try {
-          const curId = state.track_window?.current_track?.id;
+          const curId = currentTrackId;
           const dur = typeof state.duration === 'number' ? state.duration : (state.track_window?.current_track?.duration_ms || 0);
           const pos = typeof state.position === 'number' ? state.position : 0;
-          const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 800);
+
+          // 1. 기존 로직: 끝부분에서 일시정지 됨
+          const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 1000);
           const justResetToZero = state.paused && lastPositionRef.current > 1000 && pos === 0;
-          // 동일 트랙에 대해 한 번만 onEnded 호출
-          if (onEnded && lastPlayedTrackRef.current && curId === lastPlayedTrackRef.current) {
-            if ((state.paused && nearingEnd) || justResetToZero) {
-              if (endedTrackRef.current !== curId) {
-                endedTrackRef.current = curId;
+
+          // 2. 트랙 변경 감지 (Spotify Autoplay 등)
+          const prevSdkId = lastSdkTrackIdRef.current;
+          const trackChangedAutomatically =
+            prevSdkId &&
+            lastPlayedTrackRef.current &&
+            prevSdkId === lastPlayedTrackRef.current &&
+            curId !== lastPlayedTrackRef.current;
+
+          if (onEnded) {
+            if (endedTrackRef.current !== lastPlayedTrackRef.current) {
+              // Case A: 같은 트랙 내에서 종료 조건 만족
+              if (curId === lastPlayedTrackRef.current) {
+                if ((state.paused && nearingEnd) || justResetToZero) {
+                  console.log('[SpotifyPlayer] Track ended (paused/reset)');
+                  endedTrackRef.current = curId;
+                  onEnded();
+                }
+              }
+              // Case B: 트랙이 자동으로 변경됨
+              else if (trackChangedAutomatically) {
+                console.log('[SpotifyPlayer] Track ended (auto changed)');
+                endedTrackRef.current = lastPlayedTrackRef.current;
                 onEnded();
               }
             }
           }
+
           lastPositionRef.current = pos;
-        } catch {}
+          lastSdkTrackIdRef.current = curId;
+        } catch (e) {
+          console.error('[SpotifyPlayer] state change error', e);
+        }
       });
+
       spPlayer.connect().then(success => { if (success) setPlayer(spPlayer); });
     };
 
@@ -103,8 +130,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     }
 
     return () => {
-      try { player?.disconnect(); } catch {}
-      // 스크립트는 유지하여 다른 화면 이동 시 재사용 (중복 생성 방지)
+      try { player?.disconnect(); } catch { }
       ensurePlayAbortRef.current.aborted = true;
     };
   }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
@@ -112,7 +138,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // 볼륨 변경 시 반영 (SDK 초기화와 분리)
   useEffect(() => {
     if (!player) return;
-    (async () => { try { await player.setVolume(volume / 100); } catch {} })();
+    (async () => { try { await player.setVolume(volume / 100); } catch { } })();
   }, [player, volume]);
 
   // 트랙 변경 시 재생 (한 번만 시도)
@@ -128,7 +154,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     if (lastPlayedTrackRef.current === id) return;
     lastPlayedTrackRef.current = id;
     endedTrackRef.current = null; // 새 트랙에 대해 종료 플래그 초기화
-    try { player?.activateElement && player.activateElement(); } catch {}
+    try { player?.activateElement && player.activateElement(); } catch { }
     const now = Date.now();
     if (playInFlightRef.current || (now - lastPlayAtRef.current) < 300) return;
     playInFlightRef.current = true;
@@ -166,19 +192,19 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ userId: user.userId, deviceId })
-            }).catch(()=>{});
+            }).catch(() => { });
             await sleep(400);
           }
           // 재개 및 재생 재시도
           await fetch(`${API_BASE_URL}/api/spotify/control`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user.userId, deviceId, action: 'resume' })
-          }).catch(()=>{});
+          }).catch(() => { });
           await sleep(200);
           await fetch(`${API_BASE_URL}/api/spotify/play`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
-          }).catch(()=>{});
+          }).catch(() => { });
         } catch (e) {
           // 무시하고 재시도
         }
@@ -216,7 +242,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: user.userId, deviceId, action: 'previous' })
-    }).catch(()=>{});
+    }).catch(() => { });
   };
 
   const handleNext = () => {
@@ -231,7 +257,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     if (!player) return;
     if (volumeDebounceRef.current) clearTimeout(volumeDebounceRef.current);
     volumeDebounceRef.current = setTimeout(async () => {
-      try { await player.setVolume(v / 100); } catch {}
+      try { await player.setVolume(v / 100); } catch { }
     }, 200);
   };
 
@@ -241,22 +267,22 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const artist = track?.artists?.[0]?.name || '';
 
   return (
-    <div className="simple-spotify-player" style={{ display:'flex', gap:16, alignItems:'center', padding:12, border:'1px solid #ddd', borderRadius:8 }}>
-      <img src={art} alt="art" style={{ width:64, height:64, objectFit:'cover', borderRadius:4 }} />
-      <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontWeight:600, fontSize:14, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{title}</div>
-        <div style={{ fontSize:12, color:'#555', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{artist}</div>
-        <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8 }}>
+    <div className="simple-spotify-player" style={{ display: 'flex', gap: 16, alignItems: 'center', padding: 12, border: '1px solid #ddd', borderRadius: 8 }}>
+      <img src={art} alt="art" style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 4 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+        <div style={{ fontSize: 12, color: '#555', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{artist}</div>
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={handlePrev} disabled={!isHost}>⏮</button>
           <button onClick={handlePlayPauseClick} disabled={!isHost}>{isPlaying ? (isPaused ? '▶️' : '⏸️') : '▶️'}</button>
           <button onClick={handleNext} disabled={!isHost}>⏭</button>
-          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <span style={{ fontSize:12 }}>🔊</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 12 }}>🔊</span>
             <input type="range" min={0} max={100} value={volume} onChange={handleVolume} />
           </div>
         </div>
       </div>
-      {!isActive && isHost && <div style={{ fontSize:11, color:'#a00' }}>플레이어 준비 중… Spotify 앱이 켜져있어야 빠릅니다.</div>}
+      {!isActive && isHost && <div style={{ fontSize: 11, color: '#a00' }}>플레이어 준비 중… Spotify 앱이 켜져있어야 빠릅니다.</div>}
     </div>
   );
 }
