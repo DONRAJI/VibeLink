@@ -60,12 +60,12 @@ class RoomSocketHandler {
         socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
         return;
       }
-      
+
       socket.join(normalizedCode);
       socket.roomCode = normalizedCode;
       socket.userId = socket.id;
       if (nickname) socket.userName = nickname;
-      
+
       // 참가자 추가 (닉네임 우선 저장, 없으면 socket.id 저장 - 하위호환)
       const participantKey = nickname || socket.id;
       if (!room.participants.includes(participantKey)) {
@@ -73,15 +73,15 @@ class RoomSocketHandler {
         room.lastActivityAt = new Date();
         await room.save();
       }
-      
-      // 방 정보 전송
-  socket.emit('roomJoined', room);
-  this.io.to(normalizedCode).emit('participantsUpdated', room.participants);
 
-  // 기존 채팅 기록 (최대 100개) 전송
-  const history = (room.chatMessages || []).slice(-100);
-  socket.emit('chatHistory', history);
-      
+      // 방 정보 전송
+      socket.emit('roomJoined', room);
+      this.io.to(normalizedCode).emit('participantsUpdated', room.participants);
+
+      // 기존 채팅 기록 (최대 100개) 전송
+      const history = (room.chatMessages || []).slice(-100);
+      socket.emit('chatHistory', history);
+
       console.log(`유저 ${socket.id}가 ${normalizedCode} 방에 참가했습니다.`);
     } catch (error) {
       console.error('방 참가 오류:', error);
@@ -121,9 +121,9 @@ class RoomSocketHandler {
         };
       }
       room.queue.push(newTrack);
-  room.lastActivityAt = new Date();
-  await room.save();
-      
+      room.lastActivityAt = new Date();
+      await room.save();
+
       console.log(`${code} 방에 '${track.title}' 트랙 추가 요청`);
       this.io.to(code).emit('trackAdded', newTrack);
       this.io.to(code).emit('queueUpdated', room.queue);
@@ -160,9 +160,12 @@ class RoomSocketHandler {
       } else if (action === 'next') {
         if (!persistent) {
           if (room.queue.length > 0) {
-            room.currentTrack = room.queue[0];
-            room.queue = room.queue.slice(1);
+            const nextTrack = room.queue[0];
+            room.currentTrack = nextTrack;
+            room.queue.shift(); // Use shift() instead of slice for clarity
+            room.markModified('queue'); // Explicitly mark as modified
             room.isPlaying = true;
+            console.log(`[NEXT] Playing: ${nextTrack.title}, Remaining Queue: ${room.queue.length}`);
           } else {
             const recommended = await this.recommendNext(previousTrack, room);
             if (recommended) {
@@ -192,11 +195,11 @@ class RoomSocketHandler {
           }
         }
       }
-      
-  room.lastActivityAt = new Date();
-  await room.save();
-      
-      console.log(`${code} 방에 '${action}' 컨트롤 요청`);
+
+      room.lastActivityAt = new Date();
+      await room.save();
+
+      console.log(`${code} 방에 '${action}' 컨트롤 요청. Current: ${room.currentTrack?.title}`);
       this.io.to(code).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
       this.io.to(code).emit('queueUpdated', room.queue);
       if (persistent) {
@@ -242,7 +245,7 @@ class RoomSocketHandler {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
-      
+
       const track = room.queue.find(t => (t.videoId === trackId) || (t.id === trackId));
       if (track) {
         if (voteType === 'up') {
@@ -281,8 +284,8 @@ class RoomSocketHandler {
       if (room.chatMessages.length > 500) {
         room.chatMessages = room.chatMessages.slice(-500);
       }
-  room.lastActivityAt = new Date();
-  await room.save();
+      room.lastActivityAt = new Date();
+      await room.save();
 
       this.io.to(code).emit('newChatMessage', entry);
     } catch (error) {
