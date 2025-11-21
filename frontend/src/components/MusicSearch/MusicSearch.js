@@ -69,7 +69,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
         setSearchResults(parsed);
         pageCacheRef.current = { 1: parsed };
       }
-    } catch {}
+    } catch { }
     setPageIndex(1);
   }, [forcedPlatform, currentRoom, searchQuery]);
 
@@ -127,7 +127,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
         }
         sessionStorage.setItem('searchQuery', searchQuery);
         sessionStorage.setItem(`searchPageIndex:${currentRoom || 'no-room'}:${platform}:${trimmed}`, '1');
-      } catch {}
+      } catch { }
       if (items.length === 0) setError('검색 결과가 없습니다.');
     } catch (err) {
       setError(err.response?.data?.message || '검색 중 오류가 발생했습니다.');
@@ -159,7 +159,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
           sessionStorage.setItem(`searchResults:${base}:${target}`, JSON.stringify(items));
           sessionStorage.setItem(`searchPaging:${base}:${target}`, JSON.stringify({ hasNext: nextFlag, hasPrev: prevFlag }));
           sessionStorage.setItem(`searchPageIndex:${base}`, String(target));
-        } catch {}
+        } catch { }
       } catch (err) {
         setError(err.response?.data?.message || '검색 중 오류 발생');
       } finally { setIsLoading(false); }
@@ -191,7 +191,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
         sessionStorage.setItem(`searchPaging:${base}:${target}`, JSON.stringify({ hasNext: nextFlag, hasPrev: prevFlag }));
         sessionStorage.setItem(`ytTokens:${base}:${target}`, JSON.stringify(ytTokensRef.current[target]));
         sessionStorage.setItem(`searchPageIndex:${base}`, String(target));
-      } catch {}
+      } catch { }
     } catch (err) {
       setError(err.response?.data?.message || '검색 중 오류 발생');
     } finally { setIsLoading(false); }
@@ -201,11 +201,14 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
   const handleAddTrack = useCallback((track) => {
     const trackToAdd = { ...track, platform, addedBy: nickname };
     onAddTrack(trackToAdd);
+    // 검색 결과 유지 (세션 스토리지 업데이트)
     try {
       const base = `${currentRoom || 'no-room'}:${platform}:${(searchQuery || '').trim()}`;
       sessionStorage.setItem(`searchResults:${base}:${pageIndex}`, JSON.stringify(searchResults || []));
       sessionStorage.setItem(`searchPageIndex:${base}`, String(pageIndex));
-    } catch {}
+    } catch { }
+    // UI 피드백 (선택 사항)
+    // alert(`${track.title} 곡이 추가되었습니다.`); 
   }, [onAddTrack, platform, nickname, currentRoom, searchQuery, pageIndex, searchResults]);
 
   const handleKeyPress = (e) => { if (e.key === 'Enter') handleSearch(); };
@@ -214,7 +217,7 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
     <div className="music-search">
       <div className="search-header">
         <h3>🎵 음악 검색</h3>
-        <p>현재 방은 <strong>{platform === 'youtube' ? 'YouTube' : 'Spotify'}</strong> 전용입니다.<br/>플레이리스트에 추가할 음악을 검색하세요.</p>
+        <p>현재 방은 <strong>{platform === 'youtube' ? 'YouTube' : 'Spotify'}</strong> 전용입니다.<br />플레이리스트에 추가할 음악을 검색하세요.</p>
       </div>
       <div className="search-form">
         <div className="search-input-group">
@@ -263,10 +266,10 @@ const MusicSearch = ({ onAddTrack, currentRoom, nickname, forcedPlatform }) => {
               </div>
             ))}
           </div>
-          <div className="search-pagination" style={{ display:'flex', gap:8, marginTop:12, alignItems:'center', flexWrap:'wrap' }}>
+          <div className="search-pagination" style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="page-btn" onClick={() => goToPage(pageIndex - 1)} disabled={!hasPrev || isLoading}>◀ Prev</button>
             {(() => {
-              const pages = Object.keys(pageCacheRef.current).map(n => parseInt(n, 10)).filter(n => !isNaN(n)).sort((a,b)=>a-b);
+              const pages = Object.keys(pageCacheRef.current).map(n => parseInt(n, 10)).filter(n => !isNaN(n)).sort((a, b) => a - b);
               const maxPage = pages.length ? pages[pages.length - 1] : 1;
               const btns = [];
               for (let p = 1; p <= maxPage; p++) {
