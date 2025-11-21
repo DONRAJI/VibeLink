@@ -167,6 +167,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
     // New Track Detected
     console.log(`[SpotifyPlayer] New track detected: ${trackId} (Old: ${lastPlayedTrackIdRef.current})`);
+    console.log(`[SpotifyPlayer] Calling /play with URI: ${trackUri}`);
+
     lastPlayedTrackIdRef.current = trackId;
     endedTrackRef.current = null;
 
@@ -177,7 +179,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
       }).then(res => {
-        if (!res.ok) console.warn('[SpotifyPlayer] Play request failed');
+        if (!res.ok) console.warn('[SpotifyPlayer] Play request failed', res.status);
+        else console.log('[SpotifyPlayer] Play request sent successfully');
       }).catch(console.error);
     }
 

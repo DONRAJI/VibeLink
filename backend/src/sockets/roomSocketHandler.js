@@ -158,20 +158,31 @@ class RoomSocketHandler {
       } else if (action === 'pause') {
         room.isPlaying = false;
       } else if (action === 'next') {
+        console.log(`[DEBUG] 'next' action triggered. Current Queue Length: ${room.queue.length}`);
+        if (room.currentTrack) {
+          console.log(`[DEBUG] Current Track ID: ${room.currentTrack.id || room.currentTrack.videoId}`);
+        }
+
         if (!persistent) {
           if (room.queue.length > 0) {
             const nextTrack = room.queue[0];
+            console.log(`[DEBUG] Next track selected from queue: ${nextTrack.title} (ID: ${nextTrack.id || nextTrack.videoId})`);
+
             room.currentTrack = nextTrack;
             room.queue.shift(); // Use shift() instead of slice for clarity
             room.markModified('queue'); // Explicitly mark as modified
             room.isPlaying = true;
-            console.log(`[NEXT] Playing: ${nextTrack.title}, Remaining Queue: ${room.queue.length}`);
+
+            console.log(`[DEBUG] Queue updated. New Length: ${room.queue.length}`);
           } else {
+            console.log('[DEBUG] Queue is empty. Attempting recommendation...');
             const recommended = await this.recommendNext(previousTrack, room);
             if (recommended) {
+              console.log(`[DEBUG] Recommended track found: ${recommended.title}`);
               room.currentTrack = recommended;
               room.isPlaying = true;
             } else {
+              console.log('[DEBUG] No recommendation found. Stopping playback.');
               room.currentTrack = null;
               room.isPlaying = false;
             }

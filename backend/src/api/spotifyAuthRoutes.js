@@ -1,5 +1,3 @@
-// api/spotifyAuthRoutes.js (전체 코드)
-
 const express = require('express');
 const axios = require('axios');
 const SpotifyService = require('../services/spotifyService');
@@ -223,22 +221,37 @@ router.get('/devices/:userId', async (req, res) => {
 
 router.post('/play', async (req, res) => {
   const { userId, deviceId, trackUri } = req.body;
-  if (!userId || !deviceId || !trackUri) return res.status(400).json({ message: '필수 정보 누락' });
+  console.log(`[DEBUG] POST /play - userId: ${userId}, deviceId: ${deviceId}, trackUri: ${trackUri}`);
+
+  if (!userId || !deviceId || !trackUri) {
+    console.error('[DEBUG] /play - Missing required fields');
+    return res.status(400).json({ message: '필수 정보 누락' });
+  }
   try {
     let tokenInfo = userTokens.get(userId);
-    if (!tokenInfo) return res.status(404).json({ message: '인증 정보 없음' });
-    if (Date.now() > tokenInfo.expiresAt - 15_000) {
-      tokenInfo = await refreshUserToken(userId);
-      if (!tokenInfo) return res.status(401).json({ message: '토큰 갱신 실패' });
+    if (!tokenInfo) {
+      console.error('[DEBUG] /play - No token info found for user');
+      return res.status(404).json({ message: '인증 정보 없음' });
     }
+    if (Date.now() > tokenInfo.expiresAt - 15_000) {
+      console.log('[DEBUG] /play - Token expiring, refreshing...');
+      tokenInfo = await refreshUserToken(userId);
+      if (!tokenInfo) {
+        console.error('[DEBUG] /play - Token refresh failed');
+        return res.status(401).json({ message: '토큰 갱신 실패' });
+      }
+    }
+
+    console.log(`[DEBUG] /play - Sending PUT to Spotify API with uri: ${trackUri}`);
     await axios.put(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`,
       { uris: [trackUri] },
       { headers: { 'Authorization': `Bearer ${tokenInfo.accessToken}` } }
     );
+    console.log('[DEBUG] /play - Spotify API request successful (204)');
     res.status(204).send();
   } catch (error) {
-    console.error('Spotify 재생 요청 실패:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({ message: '재생 요청 실패' });
+    console.error('[DEBUG] /play - Spotify API error:', error.response?.status, error.response?.data || error.message);
+    res.status(error.response?.status || 500).json({ message: '재생 요청 실패', detail: error.response?.data });
   }
 });
 
