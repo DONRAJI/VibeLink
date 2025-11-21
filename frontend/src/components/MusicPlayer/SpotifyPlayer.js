@@ -16,17 +16,12 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const [duration, setDuration] = useState(0);
   const [isSeeking, setIsSeeking] = useState(false);
 
-  const lastPlayedTrackRef = useRef(null);
+  // Refs for state management
+  const lastPlayedTrackIdRef = useRef(null);
   const initRef = useRef(false);
-  const controlInFlightRef = useRef(false);
-  const playInFlightRef = useRef(false);
-  const lastControlAtRef = useRef(0);
-  const lastPlayAtRef = useRef(0);
   const volumeDebounceRef = useRef(null);
   const endedTrackRef = useRef(null);
   const lastPositionRef = useRef(0);
-  const lastSdkTrackIdRef = useRef(null);
-  const ensurePlayAbortRef = useRef({ aborted: false });
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -39,7 +34,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return data.accessToken;
   }, []);
 
-  // SDK 로드 및 초기화
+  // 1. SDK Initialization
   useEffect(() => {
     if (!isHost) return;
     if (initRef.current) return;
@@ -66,6 +61,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
       spPlayer.addListener('player_state_changed', (state) => {
         if (!state) { setIsActive(false); return; }
+
         const currentTrackId = state.track_window?.current_track?.id;
         setCurrentSdkTrack(state.track_window.current_track);
         setIsPaused(state.paused);
@@ -76,43 +72,43 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
           setDuration(state.duration);
         }
 
-        // --- 종료 감지 로직 ---
-        try {
-          const curId = currentTrackId;
-          const dur = typeof state.duration === 'number' ? state.duration : (state.track_window?.current_track?.duration_ms || 0);
-          const pos = typeof state.position === 'number' ? state.position : 0;
+        // End of Track Detection
+        const dur = state.duration || state.track_window?.current_track?.duration_ms || 0;
+        const pos = state.position || 0;
 
-          const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 1000);
-          const justResetToZero = state.paused && lastPositionRef.current > 1000 && pos === 0;
+        // 1. Check if we are very close to the end (within 1s) and paused (Spotify often pauses at end)
+        // 2. Or if position reset to 0 from a significant value (auto-repeat or playlist progression)
+        const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 1000);
+        const justResetToZero = state.paused && lastPositionRef.current > 1000 && pos === 0;
 
-          const prevSdkId = lastSdkTrackIdRef.current;
-          const trackChangedAutomatically =
-            prevSdkId &&
-            lastPlayedTrackRef.current &&
-            prevSdkId === lastPlayedTrackRef.current &&
-            curId !== lastPlayedTrackRef.current;
+        // Detect if the track ID changed automatically (Spotify Autoplay)
+        const trackChangedAutomatically =
+          lastPlayedTrackIdRef.current &&
+          currentTrackId &&
+          lastPlayedTrackIdRef.current !== currentTrackId &&
+          // Ensure it wasn't us who changed it via props
+          currentTrack?.id === lastPlayedTrackIdRef.current;
 
-          if (onEnded) {
-            if (endedTrackRef.current !== lastPlayedTrackRef.current) {
-              if (curId === lastPlayedTrackRef.current) {
-                if ((state.paused && nearingEnd) || justResetToZero) {
-                  console.log('[SpotifyPlayer] Track ended (paused/reset)');
-                  endedTrackRef.current = curId;
-                  onEnded();
-                }
-              } else if (trackChangedAutomatically) {
-                console.log('[SpotifyPlayer] Track ended (auto changed)');
-                endedTrackRef.current = lastPlayedTrackRef.current;
-                onEnded();
-              }
+        if (onEnded) {
+          // Case A: Track finished and stopped/paused at end
+          if (state.paused && nearingEnd && currentTrackId === lastPlayedTrackIdRef.current) {
+            if (endedTrackRef.current !== currentTrackId) {
+              console.log('[SpotifyPlayer] Track ended (paused at end)');
+              endedTrackRef.current = currentTrackId;
+              onEnded();
             }
           }
-
-          lastPositionRef.current = pos;
-          lastSdkTrackIdRef.current = curId;
-        } catch (e) {
-          console.error('[SpotifyPlayer] state change error', e);
+          // Case B: Track finished and Spotify auto-played next (or reset)
+          else if (justResetToZero && currentTrackId === lastPlayedTrackIdRef.current) {
+            if (endedTrackRef.current !== currentTrackId) {
+              console.log('[SpotifyPlayer] Track ended (reset to zero)');
+              endedTrackRef.current = currentTrackId;
+              onEnded();
+            }
+          }
         }
+
+        lastPositionRef.current = pos;
       });
 
       spPlayer.connect().then(success => { if (success) setPlayer(spPlayer); });
@@ -136,17 +132,65 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
     return () => {
       try { player?.disconnect(); } catch { }
-      ensurePlayAbortRef.current.aborted = true;
     };
   }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
 
-  // 볼륨 변경
+  // 2. Playback Control Logic (Triggered by props change)
+  useEffect(() => {
+    if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
+
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return;
+
+    const trackId = currentTrack.id;
+    const trackUri = currentTrack.uri || `spotify:track:${trackId}`;
+
+    // If we are already playing this track, just ensure play/pause state matches
+    if (lastPlayedTrackIdRef.current === trackId) {
+      if (isPlaying && isPaused) {
+        // Resume
+        fetch(`${API_BASE_URL}/api/spotify/control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.userId, deviceId, action: 'resume' })
+        }).catch(console.error);
+      } else if (!isPlaying && !isPaused) {
+        // Pause
+        fetch(`${API_BASE_URL}/api/spotify/control`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.userId, deviceId, action: 'pause' })
+        }).catch(console.error);
+      }
+      return;
+    }
+
+    // New Track Detected
+    console.log(`[SpotifyPlayer] New track detected: ${trackId} (Old: ${lastPlayedTrackIdRef.current})`);
+    lastPlayedTrackIdRef.current = trackId;
+    endedTrackRef.current = null;
+
+    // Play the new track
+    if (isPlaying) {
+      fetch(`${API_BASE_URL}/api/spotify/play`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+      }).then(res => {
+        if (!res.ok) console.warn('[SpotifyPlayer] Play request failed');
+      }).catch(console.error);
+    }
+
+  }, [currentTrack, isPlaying, isHost, deviceId, isPaused, getStoredSpotifyUser]);
+
+
+  // 3. Volume Control
   useEffect(() => {
     if (!player) return;
     (async () => { try { await player.setVolume(volume / 100); } catch { } })();
   }, [player, volume]);
 
-  // 재생 위치 폴링 (UI 업데이트용)
+  // 4. Position Polling
   useEffect(() => {
     if (!player || isPaused || isSeeking) return;
     const interval = setInterval(() => {
@@ -159,133 +203,9 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return () => clearInterval(interval);
   }, [player, isPaused, isSeeking]);
 
-  // 트랙 변경 시 재생
-  useEffect(() => {
-    if (!isHost) return;
-    const id = currentTrack?.id;
-    if (!id || currentTrack.platform !== 'spotify') return;
-    if (!deviceId) return;
-    if (!isPlaying) return;
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return;
 
-    const trackUri = currentTrack.uri || `spotify:track:${id}`;
-
-    // 이미 같은 트랙을 재생 중이면 스킵 (중복 요청 방지)
-    if (lastPlayedTrackRef.current === id && isActive && !isPaused) {
-      return;
-    }
-
-    if (lastPlayedTrackRef.current !== id) {
-      lastPlayedTrackRef.current = id;
-      endedTrackRef.current = null;
-    }
-
-    try { player?.activateElement && player.activateElement(); } catch { }
-
-    const now = Date.now();
-    if (playInFlightRef.current || (now - lastPlayAtRef.current) < 500) return; // 300 -> 500ms로 증가
-    playInFlightRef.current = true;
-    lastPlayAtRef.current = now;
-
-    fetch(`${API_BASE_URL}/api/spotify/play`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
-    }).then(r => {
-      if (!r.ok) console.warn('[SpotifyPlayer] play 실패 status=', r.status);
-    }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e))
-      .finally(() => { playInFlightRef.current = false; });
-
-    // 재생 보장: 상태 폴링 + 필요 시 transfer/resume/재시도
-    let isCancelled = false;
-    const ensurePlayback = async () => {
-      const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-      let attempts = 0;
-      while (!isCancelled && attempts < 5) {
-        attempts++;
-        // 첫 시도 대기 시간 증가 (Spotify API 반영 지연 고려)
-        await sleep(attempts === 1 ? 1500 : 2000);
-
-        if (isCancelled) return;
-
-        // 사용자가 일시정지했으면 중단
-        if (!isPlaying) return;
-
-        try {
-          const st = await fetch(`${API_BASE_URL}/api/spotify/playback-state/${user.userId}`);
-          if (!st.ok) continue;
-          const data = await st.json();
-          const activeDevId = data?.device?.id;
-          const isPlayingFlag = !!data?.is_playing;
-          const currentId = data?.item?.id;
-          const currentUri = data?.item?.uri;
-
-          // 이미 잘 재생 중이면 종료 (ID 또는 URI 일치)
-          if (activeDevId === deviceId && isPlayingFlag) {
-            if (currentId === id || currentUri === trackUri) {
-              return; // 성공
-            }
-          }
-
-          if (isCancelled) return;
-
-          // 기기 활성화/전송 보정
-          if (activeDevId !== deviceId) {
-            await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ userId: user.userId, deviceId })
-            }).catch(() => { });
-            await sleep(500);
-          }
-
-          if (isCancelled) return;
-
-          // 다시 재생 요청
-          await fetch(`${API_BASE_URL}/api/spotify/play`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
-          }).catch(() => { });
-
-        } catch (e) {
-          // 무시하고 재시도
-        }
-      }
-    };
-    ensurePlayback();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [currentTrack?.id, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
-
-  // isPlaying 토글
-  useEffect(() => {
-    if (!isHost || !deviceId || !player) return;
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return;
-    const action = isPlaying ? 'resume' : 'pause';
-
-    // 이미 상태가 일치하면 스킵
-    if (isPlaying === !isPaused) return;
-
-    const now = Date.now();
-    if (controlInFlightRef.current || (now - lastControlAtRef.current) < 300) return;
-    controlInFlightRef.current = true;
-    lastControlAtRef.current = now;
-
-    fetch(`${API_BASE_URL}/api/spotify/control`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, action })
-    }).catch(e => console.warn('[SpotifyPlayer] control 오류', action, e))
-      .finally(() => { controlInFlightRef.current = false; });
-  }, [isPlaying, isHost, deviceId, player, getStoredSpotifyUser, isPaused]);
-
-  const handlePlayPauseClick = () => {
-    onPlayPause && onPlayPause();
-  };
-
+  // Handlers
+  const handlePlayPauseClick = () => onPlayPause && onPlayPause();
   const handlePrev = () => {
     const user = getStoredSpotifyUser();
     if (!isHost || !user?.userId || !deviceId) return;
@@ -295,11 +215,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       body: JSON.stringify({ userId: user.userId, deviceId, action: 'previous' })
     }).catch(() => { });
   };
-
-  const handleNext = () => {
-    if (!isHost) return;
-    onNext && onNext();
-  };
+  const handleNext = () => onNext && onNext();
 
   const handleVolume = (e) => {
     const v = Number(e.target.value);
