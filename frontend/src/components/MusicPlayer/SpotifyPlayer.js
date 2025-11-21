@@ -191,11 +191,83 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     fetch(`${API_BASE_URL}/api/spotify/play`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      if(!user?.userId) return;
-      const action = isPlaying ? 'resume' : 'pause';
+      body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+    }).then(r => {
+      if (!r.ok) console.warn('[SpotifyPlayer] play 실패 status=', r.status);
+    }).catch(e => console.warn('[SpotifyPlayer] play 네트워크 오류', e))
+      .finally(() => { playInFlightRef.current = false; });
 
-      // 이미 상태가 일치하면 스킵
-      if(isPlaying === !isPaused) return;
+    // 재생 보장: 상태 폴링 + 필요 시 transfer/resume/재시도
+    let isCancelled = false;
+    const ensurePlayback = async () => {
+      const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+      let attempts = 0;
+      while (!isCancelled && attempts < 5) {
+        attempts++;
+        // 첫 시도 대기 시간 증가 (Spotify API 반영 지연 고려)
+        await sleep(attempts === 1 ? 1500 : 2000);
+
+        if (isCancelled) return;
+
+        // 사용자가 일시정지했으면 중단
+        if (!isPlaying) return;
+
+        try {
+          const st = await fetch(`${API_BASE_URL}/api/spotify/playback-state/${user.userId}`);
+          if (!st.ok) continue;
+          const data = await st.json();
+          const activeDevId = data?.device?.id;
+          const isPlayingFlag = !!data?.is_playing;
+          const currentId = data?.item?.id;
+          const currentUri = data?.item?.uri;
+
+          // 이미 잘 재생 중이면 종료 (ID 또는 URI 일치)
+          if (activeDevId === deviceId && isPlayingFlag) {
+            if (currentId === id || currentUri === trackUri) {
+              return; // 성공
+            }
+          }
+
+          if (isCancelled) return;
+
+          // 기기 활성화/전송 보정
+          if (activeDevId !== deviceId) {
+            await fetch(`${API_BASE_URL}/api/spotify/transfer`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: user.userId, deviceId })
+            }).catch(() => { });
+            await sleep(500);
+          }
+
+          if (isCancelled) return;
+
+          // 다시 재생 요청
+          await fetch(`${API_BASE_URL}/api/spotify/play`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+          }).catch(() => { });
+
+        } catch (e) {
+          // 무시하고 재시도
+        }
+      }
+    };
+    ensurePlayback();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentTrack?.id, isPlaying, isHost, deviceId, getStoredSpotifyUser, player]);
+
+  // isPlaying 토글
+  useEffect(() => {
+    if (!isHost || !deviceId || !player) return;
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return;
+    const action = isPlaying ? 'resume' : 'pause';
+
+    // 이미 상태가 일치하면 스킵
+    if (isPlaying === !isPaused) return;
 
     const now = Date.now();
     if (controlInFlightRef.current || (now - lastControlAtRef.current) < 300) return;
