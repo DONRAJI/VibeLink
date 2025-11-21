@@ -76,18 +76,8 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
         const dur = state.duration || state.track_window?.current_track?.duration_ms || 0;
         const pos = state.position || 0;
 
-        // 1. Check if we are very close to the end (within 1s) and paused (Spotify often pauses at end)
-        // 2. Or if position reset to 0 from a significant value (auto-repeat or playlist progression)
         const nearingEnd = dur > 0 && pos >= Math.max(0, dur - 1000);
         const justResetToZero = state.paused && lastPositionRef.current > 1000 && pos === 0;
-
-        // Detect if the track ID changed automatically (Spotify Autoplay)
-        const trackChangedAutomatically =
-          lastPlayedTrackIdRef.current &&
-          currentTrackId &&
-          lastPlayedTrackIdRef.current !== currentTrackId &&
-          // Ensure it wasn't us who changed it via props
-          currentTrack?.id === lastPlayedTrackIdRef.current;
 
         if (onEnded) {
           // Case A: Track finished and stopped/paused at end
@@ -135,7 +125,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     };
   }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
 
-  // 2. Playback Control Logic (Triggered by props change)
+  // 2. Track Change Detection - Play new track
   useEffect(() => {
     if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
 
@@ -157,27 +147,49 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     lastPlayedTrackIdRef.current = trackId;
     endedTrackRef.current = null;
 
-    // Play the new track
-    if (isPlaying) {
-      fetch(`${API_BASE_URL}/api/spotify/play`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
-      }).then(res => {
-        if (!res.ok) console.warn('[SpotifyPlayer] Play request failed', res.status);
-        else console.log('[SpotifyPlayer] Play request sent successfully');
-      }).catch(console.error);
-    }
+    // Always play the new track (ignore isPlaying state for track changes)
+    fetch(`${API_BASE_URL}/api/spotify/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
+    }).then(res => {
+      if (!res.ok) {
+        console.warn('[SpotifyPlayer] Play request failed', res.status);
+        return res.text().then(text => console.error('[SpotifyPlayer] Error response:', text));
+      }
+      console.log('[SpotifyPlayer] Play request sent successfully');
+    }).catch(err => {
+      console.error('[SpotifyPlayer] Network error:', err);
+    });
+  }, [currentTrack?.id, isHost, deviceId, getStoredSpotifyUser]);
 
-  }, [currentTrack?.id, isHost, deviceId, getStoredSpotifyUser]); // Removed isPlaying from deps to avoid re-triggering on pause/play toggle
+  // 3. Pause/Resume Control (separate from track changes)
+  useEffect(() => {
+    if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
+    if (!lastPlayedTrackIdRef.current) return; // No track has been played yet
 
-  // 3. Volume Control
+    const user = getStoredSpotifyUser();
+    if (!user?.userId) return;
+
+    const action = isPlaying ? 'resume' : 'pause';
+    console.log(`[SpotifyPlayer] isPlaying changed to: ${isPlaying}, sending ${action}`);
+
+    fetch(`${API_BASE_URL}/api/spotify/control`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: user.userId, deviceId, action })
+    }).catch(err => {
+      console.error('[SpotifyPlayer] Control request failed:', err);
+    });
+  }, [isPlaying, isHost, deviceId, getStoredSpotifyUser]);
+
+  // 4. Volume Control
   useEffect(() => {
     if (!player) return;
     (async () => { try { await player.setVolume(volume / 100); } catch { } })();
   }, [player, volume]);
 
-  // 4. Position Polling
+  // 5. Position Polling
   useEffect(() => {
     if (!player || isPaused || isSeeking) return;
     const interval = setInterval(() => {
@@ -194,14 +206,12 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // Handlers - Direct API Calls for Immediate Response
   const handlePlayPauseClick = async () => {
     if (!isHost) return;
-    // Optimistic UI update (optional, but good for responsiveness)
-    // But here we rely on props from parent, so we just call the handler
     onPlayPause && onPlayPause();
 
     const user = getStoredSpotifyUser();
     if (!user?.userId || !deviceId) return;
 
-    const action = isPaused ? 'resume' : 'pause'; // Toggle based on current local state
+    const action = isPaused ? 'resume' : 'pause';
     console.log(`[SpotifyPlayer] Manual Control: ${action}`);
 
     try {
