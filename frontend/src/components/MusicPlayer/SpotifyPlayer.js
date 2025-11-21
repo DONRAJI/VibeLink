@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+
+
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 // 단순화된 SpotifyPlayer: 최소 SDK 연결 + 재생/일시정지/다음/이전
