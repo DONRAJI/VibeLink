@@ -56,23 +56,17 @@ function App() {
     socket.on('roomError', (err) => alert(err.message));
     socket.on('trackAdded', (track) => setQueue(prev => [...prev, track]));
     socket.on('queueUpdated', (newQueue) => setQueue(newQueue));
-    socket.on('playbackControlled', ({ action, track, isPlaying: newIsPlaying }) => {
-      console.log('🎧 playbackControlled:', action, track?.platform, track?.videoId || track?.id);
-      if (action === 'play' && track) {
-        setCurrentTrack(track);
-        setIsPlaying(true);
-      } else if (action === 'pause') {
+    socket.on('playbackControlled', ({ action, track, isPlaying }) => {
+      console.log(`🎧 playbackControlled: ${action} ${track?.platform} ${track?.id || track?.videoId}`);
+      console.log(`[App.js] Received track:`, track);
+
+      if (track) setCurrentTrack(track);
+      if (typeof isPlaying === 'boolean') setIsPlaying(isPlaying);
+
+      if (action === 'stop') {
+        setCurrentTrack(null);
         setIsPlaying(false);
-      } else if (action === 'next') {
-        if (track) {
-          setCurrentTrack(track);
-          setIsPlaying(true);
-        } else {
-          setCurrentTrack(null);
-          setIsPlaying(false);
-        }
       }
-      if (typeof newIsPlaying === 'boolean') setIsPlaying(newIsPlaying);
     });
     socket.on('participantsUpdated', (p) => setParticipants(p));
     socket.on('playlistCursor', (data) => {
@@ -85,7 +79,7 @@ function App() {
 
     return () => {
       socket.off('connect');
-      socket.off('disconnect'); 
+      socket.off('disconnect');
       socket.off('connect_error');
       socket.off('roomJoined');
       socket.off('roomError');
@@ -107,7 +101,7 @@ function App() {
   const handleRoomCreated = (code, hostNickname) => {
     setRoomCode(code);
     setNickname(hostNickname);
-    try { localStorage.setItem('nickname', hostNickname); } catch {}
+    try { localStorage.setItem('nickname', hostNickname); } catch { }
     setIsHost(true);
     // --- [핵심 수정 2] --- 방 생성 시점에 수동으로 소켓 연결!
     socket.connect();
@@ -118,7 +112,7 @@ function App() {
   const handleRoomJoined = (code, userNickname) => {
     setRoomCode(code);
     setNickname(userNickname);
-    try { localStorage.setItem('nickname', userNickname); } catch {}
+    try { localStorage.setItem('nickname', userNickname); } catch { }
     setIsHost(false);
     // --- [핵심 수정 3] --- 방 참가 시점에 수동으로 소켓 연결!
     socket.connect();
@@ -160,20 +154,20 @@ function App() {
     useEffect(() => {
       if (!code) return;
       let savedName = '';
-      try { savedName = localStorage.getItem('nickname') || ''; } catch {}
+      try { savedName = localStorage.getItem('nickname') || ''; } catch { }
       if (!savedName) {
         const input = window.prompt('닉네임을 입력하세요');
         if (!input || input.trim().length < 2) {
           return navigate('/lobby', { replace: true });
         }
         savedName = input.trim();
-        try { localStorage.setItem('nickname', savedName); } catch {}
+        try { localStorage.setItem('nickname', savedName); } catch { }
       }
       // 이미 동일 코드로 조인 완료된 경우 중복 emit 방지
       if (lastJoinRef.current === code && roomCode === code) return;
 
       if (roomCode && roomCode !== code) {
-        try { socket.disconnect(); } catch {}
+        try { socket.disconnect(); } catch { }
         setCurrentTrack(null);
         setIsPlaying(false);
         setQueue([]);
@@ -185,7 +179,7 @@ function App() {
       // isHost 값은 roomJoined 이벤트에서 결정되므로 여기서 강제로 false로 덮어쓰지 않음
       socket.emit('joinRoom', { roomCode: code, nickname: savedName });
       lastJoinRef.current = code;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code]);
 
     if (!roomCode) {
