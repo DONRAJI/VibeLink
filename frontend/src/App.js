@@ -10,6 +10,7 @@ import ChatWindow from './components/ChatWindow/ChatWindow';
 import RoomHeader from './components/RoomHeader/RoomHeader';
 import RoomEntry from './components/RoomEntry/RoomEntry';
 import CallbackPage from './components/CallbackPage/CallbackPage';
+import SplashScreen from './components/SplashScreen/SplashScreen';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 const socket = io(BACKEND_URL, {
@@ -18,6 +19,7 @@ const socket = io(BACKEND_URL, {
 });
 
 function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [roomCode, setRoomCode] = useState('');
   const [nickname, setNickname] = useState('');
   const [isHost, setIsHost] = useState(false);
@@ -48,12 +50,7 @@ function App() {
       setPlaylistCursor(room.playlistCursor || 0);
 
       const myId = socket.id;
-      const hostId = room.participants[0];
       // 닉네임이 있으면 닉네임으로 비교할 수도 있지만, 여기서는 간단히 첫 번째 참가자를 호스트로 간주
-      // 실제로는 서버에서 isHost 플래그를 주거나, socket.id와 비교
-      // 여기서는 간단히: 내가 방을 만들었거나(handleRoomCreated), 참가자 목록 첫번째면 호스트
-      // 하지만 handleRoomCreated에서 이미 isHost=true로 설정함.
-      // 참가자의 경우 첫번째인지 확인
       if (participants.length > 0 && participants[0] === nickname) {
         // 닉네임 기반 비교 (불완전할 수 있음)
       }
@@ -61,7 +58,6 @@ function App() {
 
     socket.on('trackAdded', (track) => {
       console.log('Track Added:', track);
-      // queueUpdated에서 처리되므로 여기서는 알림만 띄우거나 생략 가능
     });
 
     socket.on('queueUpdated', (newQueue) => {
@@ -236,6 +232,10 @@ function App() {
         </div>
       </div>
     );
+  }
+
+  if (showSplash) {
+    return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
   return (
