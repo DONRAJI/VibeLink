@@ -5,6 +5,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
+// Global variable to track the last played track ID across component remounts
+let globalLastPlayedTrackId = null;
+
 export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
@@ -17,7 +20,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const [isSeeking, setIsSeeking] = useState(false);
 
   // Refs for state management
-  const lastPlayedTrackIdRef = useRef(null);
   const initRef = useRef(false);
   const volumeDebounceRef = useRef(null);
   const endedTrackRef = useRef(null);
@@ -81,7 +83,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
 
         if (onEnded) {
           // Case A: Track finished and stopped/paused at end
-          if (state.paused && nearingEnd && currentTrackId === lastPlayedTrackIdRef.current) {
+          if (state.paused && nearingEnd && currentTrackId === globalLastPlayedTrackId) {
             if (endedTrackRef.current !== currentTrackId) {
               console.log('[SpotifyPlayer] Track ended (paused at end)');
               endedTrackRef.current = currentTrackId;
@@ -89,7 +91,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
             }
           }
           // Case B: Track finished and Spotify auto-played next (or reset)
-          else if (justResetToZero && currentTrackId === lastPlayedTrackIdRef.current) {
+          else if (justResetToZero && currentTrackId === globalLastPlayedTrackId) {
             if (endedTrackRef.current !== currentTrackId) {
               console.log('[SpotifyPlayer] Track ended (reset to zero)');
               endedTrackRef.current = currentTrackId;
@@ -135,16 +137,16 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     const trackId = currentTrack.id;
     const trackUri = currentTrack.uri || `spotify:track:${trackId}`;
 
-    // Prevent duplicate play requests for the same track
-    if (lastPlayedTrackIdRef.current === trackId) {
+    // Prevent duplicate play requests for the same track using GLOBAL variable
+    if (globalLastPlayedTrackId === trackId) {
       return;
     }
 
     // New Track Detected
-    console.log(`[SpotifyPlayer] New track detected: ${trackId} (Old: ${lastPlayedTrackIdRef.current})`);
+    console.log(`[SpotifyPlayer] New track detected: ${trackId} (Old: ${globalLastPlayedTrackId})`);
     console.log(`[SpotifyPlayer] Calling /play with URI: ${trackUri}`);
 
-    lastPlayedTrackIdRef.current = trackId;
+    globalLastPlayedTrackId = trackId;
     endedTrackRef.current = null;
 
     // Always play the new track (ignore isPlaying state for track changes)
@@ -166,7 +168,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // 3. Pause/Resume Control (separate from track changes)
   useEffect(() => {
     if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
-    if (!lastPlayedTrackIdRef.current) return; // No track has been played yet
+    if (!globalLastPlayedTrackId) return; // No track has been played yet
 
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
