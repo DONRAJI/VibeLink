@@ -25,6 +25,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const endedTrackRef = useRef(null);
   const lastPositionRef = useRef(0);
 
+  // Ref to track the last track ID handled by the control effect
+  // This prevents sending a 'resume' command immediately after a 'play' command
+  const lastControlTrackIdRef = useRef(null);
+
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
   }, []);
@@ -168,7 +172,13 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   // 3. Pause/Resume Control (separate from track changes)
   useEffect(() => {
     if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
-    if (!globalLastPlayedTrackId) return; // No track has been played yet
+
+    // If the track changed, we update our control ref but DO NOT send a command
+    // because Effect 2 handles the initial play.
+    if (lastControlTrackIdRef.current !== currentTrack.id) {
+      lastControlTrackIdRef.current = currentTrack.id;
+      return;
+    }
 
     const user = getStoredSpotifyUser();
     if (!user?.userId) return;
@@ -183,7 +193,7 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     }).catch(err => {
       console.error('[SpotifyPlayer] Control request failed:', err);
     });
-  }, [isPlaying, isHost, deviceId, getStoredSpotifyUser]);
+  }, [isPlaying, isHost, deviceId, getStoredSpotifyUser, currentTrack?.id]);
 
   // 4. Volume Control
   useEffect(() => {
