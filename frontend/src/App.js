@@ -4,6 +4,15 @@ import { io } from 'socket.io-client';
 import Login from './pages/Login/Login';
 import Signup from './pages/Signup/Signup';
 import Lobby from './components/Lobby/Lobby';
+import RoomEntry from './components/RoomEntry/RoomEntry';
+import RoomHeader from './components/RoomHeader/RoomHeader';
+import MusicPlayer from './components/MusicPlayer/MusicPlayer';
+import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
+import MusicSearch from './components/MusicSearch/MusicSearch';
+import ChatWindow from './components/ChatWindow/ChatWindow';
+import SplashScreen from './components/SplashScreen/SplashScreen';
+import CallbackPage from './pages/Callback/CallbackPage';
+import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 const socket = io(BACKEND_URL, {
