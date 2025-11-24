@@ -2,19 +2,17 @@ import React, { useEffect, useState, useRef } from 'react';
 import './MusicPlayer.css';
 import SpotifyPlayer from './SpotifyPlayer';
 
-const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) => {
+const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost, onDeviceReady }) => {
   // --- API 및 플레이어 상태 관리 ---
   const playerRef = useRef(null); // YouTube 플레이어 객체 인스턴스 저장
   const [isApiReady, setIsApiReady] = useState(false); // YouTube API 스크립트 로드 여부
   const [isPlayerReady, setIsPlayerReady] = useState(false); // 플레이어 인스턴스 준비 여부
-  
+
   // --- 내부 상태 관리 ---
   const [internalPlaying, setInternalPlaying] = useState(isPlaying);
   const [playerError, setPlayerError] = useState(null);
 
   // --- Props를 Ref에 저장 (이벤트 핸들러에서 최신 Props 사용) ---
-  // useEffect 안의 이벤트 핸들러는 생성 시점의 state/props를 기억합니다.
-  // 항상 최신 onEnded 함수를 참조하기 위해 ref를 사용합니다.
   const onEndedRef = useRef(onEnded);
   useEffect(() => {
     onEndedRef.current = onEnded;
@@ -22,161 +20,117 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
 
   // --- 1. YouTube IFrame API 스크립트 로드 (컴포넌트 마운트 시 1회) ---
   useEffect(() => {
-    // window.YT가 이미 있는지 확인 (예: 다른 곳에서 이미 로드)
     if (window.YT && window.YT.Player) {
       setIsApiReady(true);
     } else {
-      // 스크립트 태그 동적 생성
       const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      
-      // API가 로드되면 이 전역 함수를 호출함
+      tag.src = "https://www.youtube.com/iframe_api";
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
       window.onYouTubeIframeAPIReady = () => {
-        console.log('YouTube IFrame API가 준비되었습니다.');
         setIsApiReady(true);
       };
-      
-      document.body.appendChild(tag);
-
-      // 컴포넌트 언마운트 시 콜백 정리
-      return () => {
-        window.onYouTubeIframeAPIReady = null;
-      };
     }
-  }, []); // 빈 배열: 마운트 시 1회만 실행
+  }, []);
 
-  // --- 2. 플레이어 생성/변경 (currentTrack 또는 API 준비 상태 변경 시) ---
+  // --- 2. YouTube 플레이어 인스턴스 생성 ---
   useEffect(() => {
-    // API가 준비되지 않았으면 아무것도 하지 않음
-    if (!isApiReady) {
-      return;
-    }
+    if (!isApiReady || playerRef.current) return;
 
-    // (정리) 기존 플레이어가 있다면 파괴
-    if (playerRef.current) {
-      playerRef.current.destroy();
-      playerRef.current = null;
-    }
-
-    // (초기화) 트랙이 없거나 videoId가 없으면 상태 초기화 후 종료
-    if (!currentTrack || !currentTrack.videoId) {
-      setIsPlayerReady(false);
-      setInternalPlaying(false);
-      setPlayerError(null);
-      return;
-    }
-
-    // (생성) API가 준비되었고, currentTrack이 있으면 새 플레이어 생성
-  console.log('새 YouTube 플레이어 생성:', currentTrack.videoId);
-    setPlayerError(null);
-    setIsPlayerReady(false); // onReady 이벤트가 다시 true로 설정할 것임
-
-    playerRef.current = new window.YT.Player('youtube-player-container', {
-      videoId: currentTrack.videoId,
+    // YouTube 플레이어 생성
+    playerRef.current = new window.YT.Player('youtube-player', {
+      height: '360',
+      width: '640',
+      videoId: currentTrack?.platform === 'youtube' ? currentTrack.videoId : '',
       playerVars: {
-        'autoplay': isPlaying ? 1 : 0, // 부모의 isPlaying 상태에 따라 자동 재생
-        'controls': 1,       // 컨트롤 표시
-        'rel': 0,            // 관련 동영상 표시 안 함
-        'modestbranding': 1, // YouTube 로고 최소화
-        'enablejsapi': 1,    // API 제어 활성화
-        'origin': window.location.origin // API 사용을 위한 출처 명시
+        autoplay: 1,
+        controls: 1,
+        disablekb: 1,
+        fs: 0,
+        iv_load_policy: 3,
+        modestbranding: 1,
+        rel: 0,
       },
       events: {
-        'onReady': (event) => {
-          console.log('플레이어 준비 완료:', currentTrack.videoId);
+        onReady: (event) => {
           setIsPlayerReady(true);
-          // 내부 재생 상태를 부모 상태와 동기화
-          setInternalPlaying(isPlaying);
-        },
-        'onStateChange': (event) => {
-          const state = event.data;
-          console.log('플레이어 상태 변경:', state);
-          
-          // === 🔥 핵심: 영상 재생 종료 감지 ===
-          if (state === window.YT.PlayerState.ENDED) {
-            console.log('영상 재생 종료됨 -> onEnded() 호출');
-            onEndedRef.current(); // Ref를 통해 최신 onEnded 함수 호출
-          }
-          // === (핵심 끝) ===
-
-          // 플레이어 내부의 재생/일시정지 버튼 클릭 시 내부 상태 반영
-          if (state === window.YT.PlayerState.PLAYING) {
-            setInternalPlaying(true);
-          } else if (state === window.YT.PlayerState.PAUSED) {
-            setInternalPlaying(false);
+          if (currentTrack?.platform === 'youtube' && isPlaying) {
+            event.target.playVideo();
           }
         },
-        'onError': (event) => {
-          console.error('YouTube 플레이어 오류:', event.data, 'Video ID:', currentTrack.videoId);
-          setPlayerError({ message: `오류 코드 ${event.data}` });
-          // 참고: 오류 발생 시(예: "볼 수 없는 동영상") 다음 곡으로 넘기려면
-          // onEndedRef.current(); // 이 주석을 해제하세요.
+        onStateChange: (event) => {
+          // YT.PlayerState.ENDED = 0
+          if (event.data === 0) {
+            if (onEndedRef.current) onEndedRef.current();
+          }
+          // YT.PlayerState.PLAYING = 1, PAUSED = 2
+          if (event.data === 1) setInternalPlaying(true);
+          if (event.data === 2) setInternalPlaying(false);
+        },
+        onError: (event) => {
+          console.error('YouTube Player Error:', event.data);
+          setPlayerError(event.data);
+          // 에러 발생 시 다음 곡으로 넘어가거나 처리 필요
+          // 예: onNext();
         }
-      }
+      },
     });
 
-    // 이 useEffect가 다시 실행될 때(트랙 변경 시) 기존 플레이어 파괴
     return () => {
       if (playerRef.current) {
         playerRef.current.destroy();
         playerRef.current = null;
       }
     };
-    // isPlaying은 'autoplay' 변수로만 사용하고, 의존성 배열에서 제외
-    // (isPlaying 변경 시 플레이어를 파괴/재생성하는 것을 방지)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTrack, isApiReady]);
+  }, [isApiReady]); // 의존성에서 currentTrack, isPlaying 제거 (인스턴스 생성은 한 번만)
 
-  // --- 3. 외부 재생/일시정지 제어 (부모의 isPlaying 변경 시) ---
+  // --- 3. Props 변경에 따른 플레이어 제어 (YouTube) ---
   useEffect(() => {
-    // 내부 UI 상태(버튼 모양)를 부모 상태와 동기화
-    setInternalPlaying(isPlaying);
-
-    // 플레이어가 준비되었고, API 제어 객체가 있을 때만 명령 전송
-    if (isPlayerReady && playerRef.current) {
-      if (isPlaying) {
-        console.log('외부 제어: playVideo() 호출');
-        playerRef.current.playVideo();
-      } else {
-        console.log('외부 제어: pauseVideo() 호출');
-        playerRef.current.pauseVideo();
-      }
+    if (!playerRef.current || !isPlayerReady) return;
+    if (currentTrack?.platform !== 'youtube') {
+      // Spotify나 다른 플랫폼일 경우 YouTube 플레이어 정지
+      playerRef.current.stopVideo();
+      return;
     }
-  }, [isPlaying, isPlayerReady]); // isPlaying(부모) 또는 isPlayerReady가 변경될 때 실행
+
+    const player = playerRef.current;
+    const currentVideoId = player.getVideoData()?.video_id;
+
+    // 비디오 ID가 다르면 로드
+    if (currentTrack.videoId && currentTrack.videoId !== currentVideoId) {
+      player.loadVideoById(currentTrack.videoId);
+    }
+
+    // 재생 상태 동기화
+    // 주의: loadVideoById는 자동 재생되므로, isPlaying이 false면 pauseVideo 호출 필요
+    // 하지만 로딩 직후 상태를 알기 어려우므로 약간의 딜레이나 상태 확인이 필요할 수 있음
+    // 여기서는 단순화하여 처리
+    if (isPlaying) {
+      if (player.getPlayerState() !== 1) player.playVideo();
+    } else {
+      if (player.getPlayerState() === 1) player.pauseVideo();
+    }
+
+  }, [currentTrack, isPlaying, isPlayerReady]);
 
 
-  // --- 4. 로컬 컨트롤 버튼 핸들러 ---
-  // (이 버튼들은 단지 부모의 상태 변경을 "요청"할 뿐입니다)
-  const handlePlay = () => {
-    console.log('재생 요청 (부모에게 전달)');
-    onPlayPause();
-  };
+  // --- 렌더링 ---
+  return (
+    <div className="music-player-container">
+      {/* YouTube Player Container */}
+      <div
+        id="youtube-player"
+        style={{
+          display: currentTrack?.platform === 'youtube' ? 'block' : 'none',
+          width: '100%',
+          maxWidth: '640px',
+          margin: '0 auto'
+        }}
+      />
 
-  const handlePause = () => {
-    console.log('일시정지 요청 (부모에게 전달)');
-    onPlayPause();
-  };
-
-  // --- 5. 렌더링 ---
-
-  // Spotify 방에서 아직 트랙 없을 때
-  if (!currentTrack) {
-    return (
-      <div className="music-player empty">
-        <div className="empty-state">
-          <div className="empty-icon">🎵</div>
-          <h3>재생할 곡이 없습니다</h3>
-          <p>플레이리스트에서 곡을 선택하거나 검색하여 추가해보세요.</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Spotify 트랙이면 네이티브 컴포넌트 사용
-  if (currentTrack.platform === 'spotify') {
-    return (
-      // --- [수정] --- SpotifyPlayer만 렌더링하도록 변경
-      <div className="music-player spotify-mode">
+      {/* Spotify Player Container */}
+      {currentTrack?.platform === 'spotify' && (
         <SpotifyPlayer
           currentTrack={currentTrack}
           isPlaying={isPlaying}
@@ -184,89 +138,18 @@ const MusicPlayer = ({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, is
           onNext={onNext}
           onEnded={onEnded}
           isHost={isHost}
+          onDeviceReady={onDeviceReady}
         />
-      </div>
-    );
-  }
+      )}
 
-  // YouTube 트랙 재생
-  return (
-    <div className="music-player">
-      <div className="player-container">
-        <div className="video-container">
-          {playerError && (
-            // (오류 표시 로직 - 기존과 거의 동일)
-            <div className="player-error">
-               <p>플레이어 오류: {playerError?.message || '알 수 없는 오류'}</p>
-               <p>문제가 발생한 비디오 ID: {currentTrack.videoId}</p>
-               <button 
-                 onClick={() => {
-                   console.log('직접 YouTube 링크로 이동');
-                   window.open(`https://www.youtube.com/watch?v=${currentTrack.videoId}`, '_blank');
-                 }}
-                 style={{ 
-                   margin: '10px', 
-                   padding: '5px 10px', 
-                   backgroundColor: '#ff0000', 
-                   color: 'white', 
-                   border: 'none', 
-                   borderRadius: '4px',
-                   cursor: 'pointer'
-                 }}
-               >
-                 YouTube에서 직접 보기
-               </button>
-            </div>
-          )}
-          
-          {/* === <iframe> 대신 플레이어가 삽입될 Div === */}
-          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', backgroundColor: '#000' }}>
-            <div 
-              id="youtube-player-container"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%'
-              }}
-            />
-          </div>
-          {/* === (변경 끝) === */}
+      {/* No Track / Placeholder */}
+      {!currentTrack && (
+        <div className="no-track-placeholder">
+          <p>재생 중인 곡이 없습니다.</p>
+        </div>
+      )}
 
-        </div>
-        
-        <div className="player-info">
-          <div className="track-info">
-            <h3 className="track-title">{currentTrack.title}</h3>
-            <div className="track-meta">
-              <span className="track-source">YouTube</span>
-              {currentTrack.addedBy && (
-                <span className="track-added-by">추가: {currentTrack.addedBy}</span>
-              )}
-            </div>
-          </div>
-          
-          <div className="player-controls">
-            <button
-              className={`control-btn ${internalPlaying ? 'playing' : ''}`}
-              // internalPlaying을 기준으로 버튼 모양 변경
-              onClick={internalPlaying ? handlePause : handlePlay}
-              disabled={!isHost}
-            >
-              {internalPlaying ? '⏸️ 일시정지' : '▶️ 재생'}
-            </button>
-            
-            <button
-              className="control-btn next-btn"
-              onClick={onNext}
-              disabled={!isHost}
-            >
-              ⏭️ 다음 곡
-            </button>
-          </div>
-        </div>
-      </div>
+      {playerError && <div className="player-error">플레이어 오류 발생: {playerError}</div>}
     </div>
   );
 };

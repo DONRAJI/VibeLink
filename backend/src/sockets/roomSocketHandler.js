@@ -1,4 +1,9 @@
 const Room = require('../models/Room');
+const SpotifyService = require('../services/spotifyService');
+const { userTokens } = require('../services/spotifyTokenStore');
+
+// Map to track which Spotify User ID controls which room (for playback)
+const roomSpotifyHost = new Map();
 
 class RoomSocketHandler {
   constructor(io, youtubeService) {
@@ -26,7 +31,21 @@ class RoomSocketHandler {
       await this.handleControlPlayback(socket, roomCode, action, track);
     });
 
-    // (Auto-DJ 기능 제거됨)
+    // Spotify Device ID 업데이트 (프론트엔드에서 전송)
+    socket.on('updateDeviceId', ({ roomCode, userId, deviceId }) => {
+      if (roomCode && userId && deviceId) {
+        const code = roomCode.toString().toUpperCase();
+        roomSpotifyHost.set(code, { userId, deviceId });
+        console.log(`[Socket] Room ${code} Spotify Host updated: ${userId} / ${deviceId}`);
+
+        // userTokens에도 deviceId 업데이트 (선택사항)
+        const tokenInfo = userTokens.get(userId);
+        if (tokenInfo) {
+          tokenInfo.deviceId = deviceId;
+          userTokens.set(userId, tokenInfo);
+        }
+      }
+    });
 
     // 트랙 투표 이벤트
     socket.on('voteTrack', async ({ roomCode, videoId, trackId, voteType }) => {
@@ -40,16 +59,12 @@ class RoomSocketHandler {
     });
   }
 
-  // (Auto-DJ 토글 핸들러 제거)
-
   async handleJoinRoom(socket, data) {
     try {
-      // data는 문자열(과거 방식) 또는 { roomCode, nickname } 객체일 수 있음
       const roomCode = (typeof data === 'string' ? data : data?.roomCode) || '';
       const normalizedCode = roomCode.toString().toUpperCase();
       const nickname = typeof data === 'object' ? (data?.nickname || '') : '';
 
-      // 이미 동일 방에 참가한 상태면 중복 처리 방지
       if (socket.roomCode && socket.roomCode === normalizedCode) {
         console.log(`⚠️ 중복 joinRoom 무시: ${socket.id} -> ${normalizedCode}`);
         return;
@@ -66,7 +81,6 @@ class RoomSocketHandler {
       socket.userId = socket.id;
       if (nickname) socket.userName = nickname;
 
-      // 참가자 추가 (닉네임 우선 저장, 없으면 socket.id 저장 - 하위호환)
       const participantKey = nickname || socket.id;
       if (!room.participants.includes(participantKey)) {
         room.participants.push(participantKey);
@@ -74,11 +88,9 @@ class RoomSocketHandler {
         await room.save();
       }
 
-      // 방 정보 전송
       socket.emit('roomJoined', room);
       this.io.to(normalizedCode).emit('participantsUpdated', room.participants);
 
-      // 기존 채팅 기록 (최대 100개) 전송
       const history = (room.chatMessages || []).slice(-100);
       socket.emit('chatHistory', history);
 
@@ -94,9 +106,8 @@ class RoomSocketHandler {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
-      // 큐 안전 가드: 없으면 초기화
       if (!Array.isArray(room.queue)) room.queue = [];
-      // 통합 트랙 구조: YouTube(videoId) 또는 Spotify(id, uri)
+
       let newTrack;
       if (track.platform === 'spotify') {
         newTrack = {
@@ -137,7 +148,6 @@ class RoomSocketHandler {
       const code = (roomCode || '').toString().toUpperCase();
       const room = await Room.findOne({ code });
       if (!room) return;
-      const previousTrack = room.currentTrack ? { ...room.currentTrack } : null;
       const persistent = room.playlistMode === 'persistent';
 
       if (action === 'play' && track) {
@@ -150,106 +160,77 @@ class RoomSocketHandler {
             }
             return !(t.platform === 'youtube' && t.videoId === track.videoId);
           });
-        } else {
-          // persistent 모드: cursor를 현재 트랙 위치로 이동
-          const idx = room.queue.findIndex(t => (track.platform === 'spotify' ? t.id === track.id : t.videoId === track.videoId));
-          if (idx >= 0) room.playlistCursor = idx;
         }
       } else if (action === 'pause') {
         room.isPlaying = false;
+      } else if (action === 'resume') {
+        room.isPlaying = true;
       } else if (action === 'next') {
-        console.log(`[DEBUG] 'next' action triggered. Current Queue Length: ${room.queue.length}`);
-        if (room.currentTrack) {
-          console.log(`[DEBUG] Current Track ID: ${room.currentTrack.id || room.currentTrack.videoId}`);
-        }
+        console.log(`[디버그] '다음' 작업이 트리거되었습니다. 현재 대기열 길이: ${room.queue.length}`);
 
-        if (!persistent) {
-          if (room.queue.length > 0) {
-            const nextTrack = room.queue[0];
-            console.log(`[DEBUG] Next track selected from queue: ${nextTrack.title} (ID: ${nextTrack.id || nextTrack.videoId})`);
+        if (room.queue.length > 0) {
+          const nextTrack = room.queue[0];
+          console.log(`[디버그] 대기열에서 다음 트랙이 선택됨: ${nextTrack.title}`);
 
-            room.currentTrack = nextTrack;
-            room.queue.shift(); // Use shift() instead of slice for clarity
-            room.markModified('queue'); // Explicitly mark as modified
-            room.isPlaying = true;
-
-            console.log(`[DEBUG] Queue updated. New Length: ${room.queue.length}`);
-          } else {
-            console.log('[DEBUG] Queue is empty. Attempting recommendation...');
-            const recommended = await this.recommendNext(previousTrack, room);
-            if (recommended) {
-              console.log(`[DEBUG] Recommended track found: ${recommended.title}`);
-              room.currentTrack = recommended;
-              room.isPlaying = true;
-            } else {
-              console.log('[DEBUG] No recommendation found. Stopping playback.');
-              room.currentTrack = null;
-              room.isPlaying = false;
-            }
+          room.currentTrack = nextTrack;
+          room.isPlaying = true;
+          if (!persistent) {
+            room.queue.shift();
           }
         } else {
-          // persistent 모드: cursor 이동
-          if (room.queue.length === 0) {
-            room.currentTrack = null;
-            room.isPlaying = false;
-          } else {
-            let nextIndex = room.playlistCursor + 1;
-            if (nextIndex >= room.queue.length) {
-              // 끝에 도달: 재생 종료 (루프 가능하게 하려면 nextIndex=0 설정)
-              room.currentTrack = null;
-              room.isPlaying = false;
-            } else {
-              room.playlistCursor = nextIndex;
-              room.currentTrack = room.queue[nextIndex];
-              room.isPlaying = true;
-            }
-          }
+          console.log('[디버그] 대기열이 비어 있습니다. 재생을 중지합니다.');
+          room.currentTrack = null;
+          room.isPlaying = false;
         }
       }
 
       room.lastActivityAt = new Date();
       await room.save();
 
-      console.log(`${code} 방에 '${action}' 컨트롤 요청. Current: ${room.currentTrack?.title}`);
-      this.io.to(code).emit('playbackControlled', { action, track: room.currentTrack, isPlaying: room.isPlaying });
-      this.io.to(code).emit('queueUpdated', room.queue);
-      if (persistent) {
-        this.io.to(code).emit('playlistCursor', { cursor: room.playlistCursor, mode: room.playlistMode });
+      console.log(`${code} 방에 '${action}' 요청. 현재: ${room.currentTrack?.title || '없음'}`);
+
+      // --- [Server-Side Spotify Control] ---
+      const current = room.currentTrack;
+      if (current && current.platform === 'spotify') {
+        const hostInfo = roomSpotifyHost.get(code);
+        if (hostInfo) {
+          const { userId, deviceId } = hostInfo;
+          const tokenInfo = userTokens.get(userId);
+
+          if (tokenInfo && tokenInfo.accessToken) {
+            try {
+              if (action === 'play' || action === 'next' || (action === 'resume' && room.isPlaying)) {
+                console.log(`[Server] Playing Spotify track: ${current.title}`);
+                await SpotifyService.playTrack(tokenInfo.accessToken, deviceId, current.uri);
+              } else if (action === 'pause') {
+                console.log(`[Server] Pausing Spotify track`);
+                await SpotifyService.pauseTrack(tokenInfo.accessToken, deviceId);
+              }
+            } catch (err) {
+              console.error(`[Server] Spotify Control Error: ${err.message}`);
+            }
+          } else {
+            console.warn(`[Server] No token found for host ${userId}`);
+          }
+        } else {
+          console.warn(`[Server] No Spotify host info for room ${code}`);
+        }
       }
+
+      this.io.to(code).emit('playbackControlled', {
+        action,
+        track: room.currentTrack,
+        isPlaying: room.isPlaying
+      });
+
+      if (action === 'next' || action === 'play') {
+        this.io.to(code).emit('queueUpdated', room.queue);
+      }
+
     } catch (error) {
       console.error('재생 제어 오류:', error);
     }
   }
-
-  // 이전 트랙을 시드로 YouTube 관련 영상에서 하나 선택
-  async recommendNext(previousTrack, room) {
-    try {
-      if (!previousTrack?.videoId || !this.youtubeService) return null;
-      const candidates = await this.youtubeService.getRelatedVideos(previousTrack.videoId, 10);
-
-      const existingIds = new Set([
-        ...(room.queue || []).map(t => t.videoId),
-        room.currentTrack?.videoId,
-        previousTrack.videoId,
-      ].filter(Boolean));
-
-      const chosen = (candidates || []).find(c => c.videoId && !existingIds.has(c.videoId));
-      if (!chosen) return null;
-
-      return {
-        videoId: chosen.videoId,
-        title: chosen.title,
-        thumbnailUrl: chosen.thumbnailUrl,
-        addedBy: 'Recommended',
-        votes: 0,
-      };
-    } catch (e) {
-      console.error('추천곡 선택 실패:', e.message);
-      return null;
-    }
-  }
-
-  // (Auto-DJ 추천 로직 제거)
 
   async handleVoteTrack(socket, roomCode, trackId, voteType) {
     try {
@@ -257,19 +238,11 @@ class RoomSocketHandler {
       const room = await Room.findOne({ code });
       if (!room) return;
 
-      const track = room.queue.find(t => (t.videoId === trackId) || (t.id === trackId));
-      if (track) {
-        if (voteType === 'up') {
-          track.votes += 1;
-        } else if (voteType === 'down') {
-          track.votes = Math.max(0, track.votes - 1);
-        }
-
-        // 투표 수에 따라 큐 정렬
-        room.queue.sort((a, b) => b.votes - a.votes);
-        room.lastActivityAt = new Date();
+      const trackIndex = room.queue.findIndex(t => (t.id === trackId || t.videoId === trackId));
+      if (trackIndex !== -1) {
+        if (voteType === 'up') room.queue[trackIndex].votes += 1;
+        else room.queue[trackIndex].votes -= 1;
         await room.save();
-
         this.io.to(code).emit('queueUpdated', room.queue);
       }
     } catch (error) {
@@ -280,49 +253,27 @@ class RoomSocketHandler {
   async handleChatMessage(socket, roomCode, user, message) {
     try {
       const code = (roomCode || '').toString().toUpperCase();
-      if (!message || !code) return;
       const room = await Room.findOne({ code });
       if (!room) return;
 
-      const entry = {
-        user: (user || socket.userName || '익명').substring(0, 50),
-        message: message.toString().substring(0, 500),
-        timestamp: new Date()
-      };
+      const chatEntry = { user, message, timestamp: new Date() };
+      if (!room.chatMessages) room.chatMessages = [];
+      room.chatMessages.push(chatEntry);
 
-      if (!Array.isArray(room.chatMessages)) room.chatMessages = [];
-      room.chatMessages.push(entry);
-      if (room.chatMessages.length > 500) {
-        room.chatMessages = room.chatMessages.slice(-500);
+      if (room.chatMessages.length > 100) {
+        room.chatMessages = room.chatMessages.slice(-100);
       }
-      room.lastActivityAt = new Date();
-      await room.save();
 
-      this.io.to(code).emit('newChatMessage', entry);
+      await room.save();
+      this.io.to(code).emit('newChatMessage', chatEntry);
     } catch (error) {
-      console.error('채팅 메시지 처리 오류:', error);
+      console.error('채팅 오류:', error);
     }
   }
 
   async handleDisconnect(socket) {
-    try {
-      if (socket.roomCode) {
-        const room = await Room.findOne({ code: socket.roomCode });
-        if (room) {
-          const removeKey = socket.userName || socket.userId;
-          room.participants = room.participants.filter(p => p !== removeKey);
-          room.lastActivityAt = new Date();
-          await room.save();
-          this.io.to(socket.roomCode).emit('participantsUpdated', room.participants);
-        }
-      }
-      console.log(`❌ 유저 접속 해제: ${socket.id}`);
-    } catch (error) {
-      console.error('연결 해제 오류:', error);
-    }
+    console.log(`❌ 유저 접속 해제: ${socket.id}`);
   }
-
-  // (추천곡 선택 로직 제거됨)
 }
 
 module.exports = RoomSocketHandler;

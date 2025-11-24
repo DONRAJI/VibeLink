@@ -1,14 +1,16 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 
-// 단순화된 SpotifyPlayer: 최소 SDK 연결 + 재생/일시정지/다음/이전
-// 외부 props: currentTrack ( { id, uri, platform } ), isPlaying (boolean), onPlayPause(), onNext(), isHost
+// Server-Side Controlled Spotify Player
+// - No direct /play or /control calls from here.
+// - Emits onDeviceReady(deviceId) so parent can sync with backend.
+// - Listens to player state to update UI.
 
 const API_BASE_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 
-// Global variable to track the last played track ID across component remounts
+// Global variable to track the last played track ID (for local state tracking if needed)
 let globalLastPlayedTrackId = null;
 
-export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost }) {
+export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, onNext, onEnded, isHost, onDeviceReady }) {
   const [player, setPlayer] = useState(null);
   const [deviceId, setDeviceId] = useState(null);
   const [currentSdkTrack, setCurrentSdkTrack] = useState(null);
@@ -24,10 +26,6 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const volumeDebounceRef = useRef(null);
   const endedTrackRef = useRef(null);
   const lastPositionRef = useRef(0);
-
-  // Ref to track the last track ID handled by the control effect
-  // This prevents sending a 'resume' command immediately after a 'play' command
-  const lastControlTrackIdRef = useRef(null);
 
   const getStoredSpotifyUser = useCallback(() => {
     try { return JSON.parse(localStorage.getItem('spotifyUser')); } catch { return null; }
@@ -60,6 +58,9 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
       spPlayer.addListener('ready', ({ device_id }) => {
         console.log('[SpotifyPlayer] Ready deviceId=', device_id);
         setDeviceId(device_id);
+        if (onDeviceReady) {
+          onDeviceReady(device_id, user.userId);
+        }
       });
       spPlayer.addListener('not_ready', ({ device_id }) => {
         console.log('[SpotifyPlayer] Device offline', device_id);
@@ -129,71 +130,14 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
     return () => {
       try { player?.disconnect(); } catch { }
     };
-  }, [isHost, fetchPlaybackToken, getStoredSpotifyUser]);
+  }, [isHost, fetchPlaybackToken, getStoredSpotifyUser, onDeviceReady]);
 
-  // 2. Track Change Detection - Play new track
+  // 2. Track Change Detection - Just update global tracker
   useEffect(() => {
-    if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
-
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return;
-
-    const trackId = currentTrack.id;
-    const trackUri = currentTrack.uri || `spotify:track:${trackId}`;
-
-    // Prevent duplicate play requests for the same track using GLOBAL variable
-    if (globalLastPlayedTrackId === trackId) {
-      return;
+    if (currentTrack?.id) {
+      globalLastPlayedTrackId = currentTrack.id;
     }
-
-    // New Track Detected
-    console.log(`[SpotifyPlayer] New track detected: ${trackId} (Old: ${globalLastPlayedTrackId})`);
-    console.log(`[SpotifyPlayer] Calling /play with URI: ${trackUri}`);
-
-    globalLastPlayedTrackId = trackId;
-    endedTrackRef.current = null;
-
-    // Always play the new track (ignore isPlaying state for track changes)
-    fetch(`${API_BASE_URL}/api/spotify/play`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, trackUri })
-    }).then(res => {
-      if (!res.ok) {
-        console.warn('[SpotifyPlayer] Play request failed', res.status);
-        return res.text().then(text => console.error('[SpotifyPlayer] Error response:', text));
-      }
-      console.log('[SpotifyPlayer] Play request sent successfully');
-    }).catch(err => {
-      console.error('[SpotifyPlayer] Network error:', err);
-    });
-  }, [currentTrack?.id, isHost, deviceId, getStoredSpotifyUser]);
-
-  // 3. Pause/Resume Control (separate from track changes)
-  useEffect(() => {
-    if (!isHost || !deviceId || !currentTrack || currentTrack.platform !== 'spotify') return;
-
-    // If the track changed, we update our control ref but DO NOT send a command
-    // because Effect 2 handles the initial play.
-    if (lastControlTrackIdRef.current !== currentTrack.id) {
-      lastControlTrackIdRef.current = currentTrack.id;
-      return;
-    }
-
-    const user = getStoredSpotifyUser();
-    if (!user?.userId) return;
-
-    const action = isPlaying ? 'resume' : 'pause';
-    console.log(`[SpotifyPlayer] isPlaying changed to: ${isPlaying}, sending ${action}`);
-
-    fetch(`${API_BASE_URL}/api/spotify/control`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: user.userId, deviceId, action })
-    }).catch(err => {
-      console.error('[SpotifyPlayer] Control request failed:', err);
-    });
-  }, [isPlaying, isHost, deviceId, getStoredSpotifyUser, currentTrack?.id]);
+  }, [currentTrack]);
 
   // 4. Volume Control
   useEffect(() => {
@@ -219,34 +163,10 @@ export default function SpotifyPlayer({ currentTrack, isPlaying, onPlayPause, on
   const handlePlayPauseClick = async () => {
     if (!isHost) return;
     onPlayPause && onPlayPause();
-
-    const user = getStoredSpotifyUser();
-    if (!user?.userId || !deviceId) return;
-
-    const action = isPaused ? 'resume' : 'pause';
-    console.log(`[SpotifyPlayer] Manual Control: ${action}`);
-
-    try {
-      await fetch(`${API_BASE_URL}/api/spotify/control`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId, action })
-      });
-    } catch (e) {
-      console.error('[SpotifyPlayer] Control failed', e);
-    }
   };
 
   const handlePrev = async () => {
-    const user = getStoredSpotifyUser();
-    if (!isHost || !user?.userId || !deviceId) return;
-    try {
-      await fetch(`${API_BASE_URL}/api/spotify/control`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.userId, deviceId, action: 'previous' })
-      });
-    } catch (e) { console.error(e); }
+    // onPrev not implemented in parent yet?
   };
 
   const handleNext = () => {
