@@ -1,16 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import './App.css';
-
-import MusicSearch from './components/MusicSearch/MusicSearch';
-import PlaylistQueue from './components/PlaylistQueue/PlaylistQueue';
-import MusicPlayer from './components/MusicPlayer/MusicPlayer';
-import ChatWindow from './components/ChatWindow/ChatWindow';
-import RoomHeader from './components/RoomHeader/RoomHeader';
-import RoomEntry from './components/RoomEntry/RoomEntry';
-import CallbackPage from './components/CallbackPage/CallbackPage';
-import SplashScreen from './components/SplashScreen/SplashScreen';
+import Login from './pages/Login/Login';
+import Signup from './pages/Signup/Signup';
+import Lobby from './components/Lobby/Lobby';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 const socket = io(BACKEND_URL, {
@@ -240,7 +233,11 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/lobby" element={<Lobby />} />
+      <Route path="/create" element={<RoomEntry onRoomCreated={handleRoomCreated} onRoomJoined={handleRoomJoined} />} />
+      <Route path="/" element={<Login />} /> {/* Default to Login, logic inside Login can redirect if token exists */}
       <Route path="/room/:code" element={<RoomPage />} />
       <Route path="/callback" element={<CallbackPage />} />
     </Routes>

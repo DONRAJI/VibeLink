@@ -1,0 +1,165 @@
+.sidebar {
+  width: 280px; /* Fixed width or percentage */
+  background-color: #000;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.sidebar-nav {
+  background-color: #121212;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-item {
+  background: none;
+  border: none;
+  color: #b3b3b3;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s;
+  text-align: left;
+}
+
+.nav-item:hover, .nav-item.active {
+  color: white;
+}
+
+.nav-item .icon {
+  font-size: 1.5rem;
+}
+
+.sidebar-library {
+  background-color: #121212;
+  border-radius: 8px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.library-header {
+  padding: 16px 16px 8px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.library-btn {
+  background: none;
+  border: none;
+  color: #b3b3b3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.library-btn:hover {
+  color: white;
+}
+
+.create-btn {
+  background: none;
+  border: none;
+  color: #b3b3b3;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 50%;
+}
+
+.create-btn:hover {
+  background-color: #2a2a2a;
+  color: white;
+}
+
+.library-filters {
+  padding: 8px 16px;
+}
+
+.filter-pill {
+  background-color: #2a2a2a;
+  border: none;
+  color: white;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.library-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.library-item:hover {
+  background-color: #1a1a1a;
+}
+
+.item-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 1.2rem;
+}
+
+.gradient-heart {
+  background: linear-gradient(135deg, #450af5, #c4efd9);
+  color: white;
+}
+
+.item-img-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%; /* Artist style */
+  background-color: #333;
+}
+
+.item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.item-title {
+  color: white;
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-sub {
+  color: #b3b3b3;
+  font-size: 0.8rem;
+}

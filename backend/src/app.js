@@ -10,6 +10,7 @@ const { Server } = require("socket.io");
 const roomRoutes = require('./api/roomRoutes');
 const searchRoutes = require('./api/searchRoutes');
 const spotifyAuthRoutes = require('./api/spotifyAuthRoutes');
+const authRoutes = require('./api/authRoutes');
 
 
 // 소켓 핸들러 및 서비스 임포트
@@ -125,6 +126,7 @@ app.get('/debug/rooms', async (req, res) => {
 app.use('/api/rooms', roomRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/spotify', spotifyAuthRoutes);
+app.use('/api/auth', authRoutes);
 
 // WebSocket 이벤트 핸들러 초기화 (님의 기존 코드 유지)
 const youtubeService = new YouTubeService(process.env.YOUTUBE_API_KEY);

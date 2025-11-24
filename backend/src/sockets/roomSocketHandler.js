@@ -64,6 +64,7 @@ class RoomSocketHandler {
             const roomCode = (typeof data === 'string' ? data : data?.roomCode) || '';
             const normalizedCode = roomCode.toString().toUpperCase();
             const nickname = typeof data === 'object' ? (data?.nickname || '') : '';
+            const userId = typeof data === 'object' ? (data?.userId || '') : '';
 
             if (socket.roomCode && socket.roomCode === normalizedCode) {
                 console.log(`⚠️ 중복 joinRoom 무시: ${socket.id} -> ${normalizedCode}`);
@@ -74,6 +75,19 @@ class RoomSocketHandler {
             if (!room) {
                 socket.emit('roomError', { message: '방을 찾을 수 없습니다.' });
                 return;
+            }
+
+            // Spotify Premium Check
+            if (room.platform === 'spotify') {
+                if (!userId) {
+                     socket.emit('roomError', { message: 'Spotify 인증 정보가 필요합니다.' });
+                     return;
+                }
+                const tokenInfo = userTokens.get(userId);
+                if (!tokenInfo || tokenInfo.profile?.product !== 'premium') {
+                    socket.emit('roomError', { message: 'Spotify Premium 사용자만 입장 가능합니다.' });
+                    return;
+                }
             }
 
             socket.join(normalizedCode);
