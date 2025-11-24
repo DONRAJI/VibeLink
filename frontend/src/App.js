@@ -9,7 +9,6 @@ import MusicPlayer from './components/MusicPlayer/MusicPlayer';
 import ChatWindow from './components/ChatWindow/ChatWindow';
 import RoomHeader from './components/RoomHeader/RoomHeader';
 import RoomEntry from './components/RoomEntry/RoomEntry';
-import CallbackPage from './components/CallbackPage/CallbackPage';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:4000';
 const socket = io(BACKEND_URL, {
