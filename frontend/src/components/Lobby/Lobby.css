@@ -13,16 +13,17 @@
 
 .main-content {
   flex: 1;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: var(--glass-border);
+  background: rgba(255, 255, 255, 0.75);
+  /* More opaque for visibility */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
-  box-shadow: var(--glass-shadow);
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.1);
 }
 
 .lobby-top-bar {
