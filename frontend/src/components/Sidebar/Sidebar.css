@@ -1,40 +1,68 @@
 .sidebar {
-  width: 280px; /* Fixed width or percentage */
-  background-color: #000;
+  width: 280px;
+  background-color: transparent;
+  /* Let App's gradient show, or use glass */
   display: flex;
   flex-direction: column;
-  padding: 8px;
-  gap: 8px;
+  padding: 0;
+  /* Padding handled by container gap in Lobby */
+  gap: 16px;
   height: 100%;
   box-sizing: border-box;
 }
 
 .sidebar-nav {
-  background-color: #121212;
-  border-radius: 8px;
-  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  /* Slightly darker glass for sidebar */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
 }
 
 .nav-item {
   background: none;
   border: none;
-  color: #b3b3b3;
+  color: rgba(255, 255, 255, 0.7);
+  /* Lighter text for dark sidebar feel, or dark text if light theme */
+  /* User image shows dark sidebar. Let's try to mimic that "darker purple" feel */
+  /* Actually, if the background is pastel gradient, the sidebar should probably be a semi-transparent dark layer to match the "darker purple" description */
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 8px 12px;
+  padding: 10px 16px;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  transition: color 0.2s;
+  transition: all 0.2s;
   text-align: left;
+  border-radius: 8px;
+  color: #4a4a4a;
+  /* Dark text for pastel theme */
 }
 
-.nav-item:hover, .nav-item.active {
-  color: white;
+/* If we want the "darker purple" sidebar as requested, we might need a specific background for the sidebar container */
+.sidebar-nav,
+.sidebar-library {
+  background: rgba(128, 116, 140, 0.25);
+  /* Darker purple tint */
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.nav-item {
+  color: #fff;
+  /* White text on darker sidebar */
+}
+
+.nav-item:hover,
+.nav-item.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .nav-item .icon {
@@ -42,16 +70,18 @@
 }
 
 .sidebar-library {
-  background-color: #121212;
-  border-radius: 8px;
+  border-radius: 16px;
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
 }
 
 .library-header {
-  padding: 16px 16px 8px 16px;
+  padding: 16px 20px 8px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -60,13 +90,14 @@
 .library-btn {
   background: none;
   border: none;
-  color: #b3b3b3;
+  color: rgba(255, 255, 255, 0.7);
   display: flex;
   align-items: center;
   gap: 12px;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+  transition: color 0.2s;
 }
 
 .library-btn:hover {
@@ -76,49 +107,56 @@
 .create-btn {
   background: none;
   border: none;
-  color: #b3b3b3;
+  color: rgba(255, 255, 255, 0.7);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 50%;
+  transition: all 0.2s;
 }
 
 .create-btn:hover {
-  background-color: #2a2a2a;
+  background-color: rgba(255, 255, 255, 0.2);
   color: white;
 }
 
 .library-filters {
-  padding: 8px 16px;
+  padding: 8px 20px;
 }
 
 .filter-pill {
-  background-color: #2a2a2a;
+  background-color: rgba(0, 0, 0, 0.2);
   border: none;
   color: white;
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 16px;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.filter-pill:hover {
+  background-color: rgba(0, 0, 0, 0.3);
 }
 
 .library-content {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 8px 12px;
 }
 
 .library-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px;
-  border-radius: 4px;
+  padding: 10px;
+  border-radius: 8px;
   cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .library-item:hover {
-  background-color: #1a1a1a;
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .item-icon {
@@ -127,20 +165,22 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 1.2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .gradient-heart {
-  background: linear-gradient(135deg, #450af5, #c4efd9);
+  background: linear-gradient(135deg, #9da8cd, #c4cce5);
   color: white;
 }
 
 .item-img-placeholder {
   width: 48px;
   height: 48px;
-  border-radius: 50%; /* Artist style */
-  background-color: #333;
+  border-radius: 50%;
+  /* Artist style */
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .item-info {
@@ -160,6 +200,6 @@
 }
 
 .item-sub {
-  color: #b3b3b3;
-  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
 }

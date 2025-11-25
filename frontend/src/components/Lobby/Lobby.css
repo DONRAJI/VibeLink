@@ -1,25 +1,33 @@
 .lobby-container {
   display: flex;
   height: 100vh;
-  background-color: #000;
-  color: white;
+  background: transparent;
+  /* Let App's gradient show */
+  color: var(--text-color);
   overflow: hidden;
+  gap: 16px;
+  /* Gap between sidebar and main content */
+  padding: 16px;
+  /* Outer padding */
 }
 
 .main-content {
   flex: 1;
-  background: linear-gradient(180deg, #202020 0%, #121212 100%);
-  border-radius: 8px;
-  margin: 8px 8px 8px 0;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   position: relative;
+  box-shadow: var(--glass-shadow);
 }
 
 .lobby-top-bar {
   height: 64px;
-  background-color: rgba(0, 0, 0, 0.5); /* Transparent or solid based on scroll */
+  background-color: rgba(255, 255, 255, 0.3);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -27,6 +35,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .nav-arrows {
@@ -35,9 +44,9 @@
 }
 
 .arrow-btn {
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0, 0, 0, 0.1);
   border: none;
-  color: white;
+  color: var(--text-color);
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -46,6 +55,11 @@
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  transition: background-color 0.2s;
+}
+
+.arrow-btn:hover {
+  background-color: rgba(0, 0, 0, 0.2);
 }
 
 .user-menu {
@@ -55,31 +69,34 @@
 }
 
 .install-app-btn {
-  background-color: black;
+  background-color: rgba(0, 0, 0, 0.8);
   color: white;
-  border: 1px solid #878787;
+  border: none;
   padding: 6px 16px;
   border-radius: 500px;
   font-weight: 700;
   font-size: 0.875rem;
   cursor: pointer;
+  transition: transform 0.2s;
 }
 
 .install-app-btn:hover {
-  border-color: white;
   transform: scale(1.02);
+  background-color: black;
 }
 
 .user-profile-icon {
   width: 32px;
   height: 32px;
-  background-color: #535353;
+  background-color: var(--primary-color);
+  color: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .content-scroll {
@@ -97,6 +114,7 @@
   font-weight: 700;
   margin-bottom: 20px;
   cursor: pointer;
+  color: var(--text-color);
 }
 
 .content-section h2:hover {
@@ -110,5 +128,5 @@
 }
 
 .empty-msg {
-  color: #b3b3b3;
+  color: var(--text-muted);
 }
