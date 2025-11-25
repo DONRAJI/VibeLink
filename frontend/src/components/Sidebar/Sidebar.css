@@ -1,37 +1,32 @@
 .sidebar {
   width: 280px;
-  background-color: transparent;
-  /* Let App's gradient show, or use glass */
+  background-color: rgba(30, 25, 35, 0.6);
+  /* Dark semi-transparent background */
+  backdrop-filter: blur(10px);
+  /* Glass effect for sidebar */
   display: flex;
   flex-direction: column;
   padding: 0;
-  /* Padding handled by container gap in Lobby */
   gap: 16px;
   height: 100%;
   box-sizing: border-box;
+  border-radius: 16px;
+  /* Rounded corners for the sidebar itself */
+  margin-right: 8px;
 }
 
 .sidebar-nav {
-  background: rgba(255, 255, 255, 0.15);
-  /* Slightly darker glass for sidebar */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
+  background: transparent;
   padding: 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
 }
 
 .nav-item {
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.7);
-  /* Lighter text for dark sidebar feel, or dark text if light theme */
-  /* User image shows dark sidebar. Let's try to mimic that "darker purple" feel */
-  /* Actually, if the background is pastel gradient, the sidebar should probably be a semi-transparent dark layer to match the "darker purple" description */
   display: flex;
   align-items: center;
   gap: 16px;
@@ -42,27 +37,12 @@
   transition: all 0.2s;
   text-align: left;
   border-radius: 8px;
-  color: #4a4a4a;
-  /* Dark text for pastel theme */
-}
-
-/* If we want the "darker purple" sidebar as requested, we might need a specific background for the sidebar container */
-.sidebar-nav,
-.sidebar-library {
-  background: rgba(128, 116, 140, 0.25);
-  /* Darker purple tint */
-  border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.nav-item {
-  color: #fff;
-  /* White text on darker sidebar */
 }
 
 .nav-item:hover,
 .nav-item.active {
   color: #fff;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .nav-item .icon {
@@ -70,14 +50,14 @@
 }
 
 .sidebar-library {
+  background: rgba(0, 0, 0, 0.2);
+  /* Slightly darker area for library */
   border-radius: 16px;
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+  margin: 0 8px 8px 8px;
 }
 
 .library-header {
@@ -125,7 +105,7 @@
 }
 
 .filter-pill {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: rgba(255, 255, 255, 0.1);
   border: none;
   color: white;
   padding: 6px 14px;
@@ -136,7 +116,7 @@
 }
 
 .filter-pill:hover {
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .library-content {
